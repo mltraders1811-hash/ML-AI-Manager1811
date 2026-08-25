@@ -1,0 +1,33 @@
+name: Daily Vyapar sync
+
+on:
+  schedule:
+    # 03:00 UTC = 08:30 IST - after the shop's nightly Vyapar backup has
+    # had time to land in Drive, before the day's first WhatsApp reminders.
+    - cron: "0 3 * * *"
+  workflow_dispatch: {} # lets you trigger a sync manually from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - name: Run sync
+        run: npm run sync
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DEFAULT_COMPANY_ID: ${{ secrets.DEFAULT_COMPANY_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GDRIVE_BACKUP_FOLDER_ID: ${{ secrets.GDRIVE_BACKUP_FOLDER_ID }}
+          DEFAULT_PAYMENT_TERMS_DAYS: ${{ vars.DEFAULT_PAYMENT_TERMS_DAYS }}

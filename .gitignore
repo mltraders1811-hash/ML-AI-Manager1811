@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Env files - never commit real secrets
+.env
+.env.local
+.env*.local
+
+# Sync pipeline scratch space
+.tmp/
+*.vyb
+*.vyp
+
+# Logs
+npm-debug.log*
+*.log
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Prisma
+prisma/dev.db

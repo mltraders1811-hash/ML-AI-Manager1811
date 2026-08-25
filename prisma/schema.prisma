@@ -1,0 +1,163 @@
+// M.L AI Manager - multi-tenant schema.
+//
+// V1 runs a single hardcoded company (see DEFAULT_COMPANY_ID in .env), but
+// every business table carries companyId from day one so adding real
+// multi-tenancy later is a matter of removing the hardcoded default, not a
+// schema migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  customers      Customer[]
+  invoices       Invoice[]
+  inventoryItems InventoryItem[]
+  syncRuns       SyncRun[]
+}
+
+model Customer {
+  id        String @id @default(uuid())
+  companyId String
+
+  // Primary key of the row in Vyapar's kb_names table - lets sync re-run
+  // idempotently instead of creating duplicates every day.
+  externalId String
+
+  name    String
+  phone   String? // used to build the WhatsApp reminder deep link
+  email   String?
+  address String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id])
+  invoices Invoice[]
+
+  @@unique([companyId, externalId])
+  @@index([companyId, name])
+}
+
+enum InvoiceType {
+  SALE
+  SALE_RETURN
+  PURCHASE
+  PURCHASE_RETURN
+  PAYMENT_IN
+  PAYMENT_OUT
+  OTHER
+}
+
+model Invoice {
+  id        String @id @default(uuid())
+  companyId String
+
+  // Primary key of the row in Vyapar's kb_transactions table.
+  externalId String
+
+  customerId String
+  type       InvoiceType
+
+  invoiceNumber String?
+  invoiceDate   DateTime
+  // Nullable: Vyapar may not store an explicit due date. The sync engine
+  // falls back to invoiceDate + DEFAULT_PAYMENT_TERMS_DAYS when absent -
+  // see src/lib/sync/syncEngine.ts.
+  dueDate DateTime?
+
+  totalAmount   Decimal @db.Decimal(14, 2)
+  paidAmount    Decimal @default(0) @db.Decimal(14, 2)
+  balanceAmount Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company           @relation(fields: [companyId], references: [id])
+  customer  Customer          @relation(fields: [customerId], references: [id])
+  lineItems InvoiceLineItem[]
+
+  @@unique([companyId, externalId])
+  @@index([companyId, type, dueDate])
+  @@index([companyId, type, invoiceDate])
+}
+
+model InvoiceLineItem {
+  id        String @id @default(uuid())
+  companyId String
+
+  // Primary key of the row in Vyapar's kb_lineitems table.
+  externalId String
+
+  invoiceId String
+
+  itemName  String
+  quantity  Decimal @db.Decimal(14, 3)
+  unitPrice Decimal @db.Decimal(14, 2)
+  amount    Decimal @db.Decimal(14, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, externalId])
+  @@index([companyId, invoiceId])
+}
+
+// Synced in the background for V1 (no UI yet) so the AI chat assistant and
+// a future inventory screen can use it without another schema change.
+model InventoryItem {
+  id        String @id @default(uuid())
+  companyId String
+
+  // Primary key of the row in Vyapar's kb_item table.
+  externalId String
+
+  name          String
+  currentStock  Decimal? @db.Decimal(14, 3)
+  salePrice     Decimal? @db.Decimal(14, 2)
+  purchasePrice Decimal? @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, externalId])
+}
+
+enum SyncStatus {
+  SUCCESS
+  FAILED
+}
+
+// One row per daily pipeline run - lets the dashboard show "last synced X
+// ago" and gives us an audit trail when a Vyapar backup fails to parse.
+model SyncRun {
+  id        String @id @default(uuid())
+  companyId String
+
+  startedAt  DateTime   @default(now())
+  finishedAt DateTime?
+  status     SyncStatus?
+
+  sourceFileName String?
+
+  customersUpserted  Int @default(0)
+  invoicesUpserted   Int @default(0)
+  lineItemsUpserted  Int @default(0)
+  inventoryUpserted  Int @default(0)
+
+  errorMessage String?
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, startedAt])
+}
