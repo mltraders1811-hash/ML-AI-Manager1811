@@ -59,8 +59,10 @@ etc.) is a guess worth double-checking specifically.
 
 1. Create a free project at neon.tech, copy the connection string into `DATABASE_URL`.
 2. Generate a tenant id: `node -e "console.log(crypto.randomUUID())"` → `DEFAULT_COMPANY_ID`.
-3. `npm install`, then `npx prisma db push` to create the schema.
-4. `npm run db:seed` to create the single V1 company row.
+
+That's it - the `build` script (`prisma db push && tsx prisma/seed.ts && next build`)
+creates the schema and seeds the V1 company automatically on every Vercel
+deploy, so there's no separate migration step to run by hand.
 
 ### 2. Google Drive access
 
