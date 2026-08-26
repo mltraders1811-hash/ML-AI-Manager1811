@@ -1,63 +1,79 @@
-// Vyapar's internal SQLite schema is not officially documented, so the
-// exact column names below are a best-effort guess based on the table
-// names given in the product spec (kb_names / kb_transactions /
-// kb_lineitems) and how Vyapar-style accounting apps typically name things.
+// Vyapar's internal SQLite schema is not officially documented. The
+// candidates below were VERIFIED against a real Vyapar backup (Aug 2026) -
+// see the comments on each field for what was actually confirmed vs. still
+// a best-effort guess for transaction types Vyapar didn't have real
+// examples of.
 //
-// DO NOT trust these blindly. Run `npm run inspect-vyp -- <path-to-file.vyp>`
-// against a real backup first - it prints every table's actual columns.
-// vyaparReader.ts resolves each logical field against a list of candidates
-// here (case-insensitive substring match) so a small naming difference
-// (e.g. "name_id" vs "id") self-corrects without a code change; only add a
-// candidate here if the automatic match is wrong for your data.
+// If your data doesn't match, run `npm run inspect-vyp -- <path-to-file.vyb>`
+// against a real backup - it prints every table's actual columns. The
+// reader resolves each logical field against a list of candidates here
+// (case-insensitive, exact match first, then substring) so small naming
+// differences self-correct without a code change; only add a candidate
+// here if the automatic match is wrong for your data.
 
 export const TABLE_CANDIDATES = {
   customers: ["kb_names", "kb_name"],
   transactions: ["kb_transactions", "kb_transaction"],
   lineItems: ["kb_lineitems", "kb_line_items", "kb_transaction_items"],
-  inventory: ["kb_item", "kb_items"],
+  inventory: ["kb_items", "kb_item"],
+  partyGroups: ["kb_party_groups", "kb_party_group"],
 };
 
 export const CUSTOMER_FIELD_CANDIDATES = {
   externalId: ["name_id", "id"],
   name: ["full_name", "name", "party_name"],
-  phone: ["number", "phone", "mobile", "contact"],
+  phone: ["phone_number", "number", "phone", "mobile", "contact"],
   email: ["email_id", "email"],
   address: ["billing_address", "address"],
+  // Verified: kb_names.name_group_id -> kb_party_groups.party_group_id.
+  // Used to detect broker-assigned customers - see brokerRules.ts.
+  groupId: ["name_group_id", "group_id"],
 };
 
+export const PARTY_GROUP_FIELD_CANDIDATES = {
+  id: ["party_group_id", "group_id", "id"],
+  name: ["party_group_name", "group_name", "name"],
+};
+
+// Verified against a real backup: kb_transactions has NO direct "total
+// amount" column - total is the sum of that transaction's own line items
+// (see readTransactions in vyaparReader.ts). cashAmount is only used as a
+// fallback for transactions with no line items (payments), where it
+// genuinely does hold the payment amount.
 export const TRANSACTION_FIELD_CANDIDATES = {
   externalId: ["txn_id", "transaction_id", "id"],
-  customerExternalId: ["name_id", "party_id", "party_name_id"],
+  customerExternalId: ["txn_name_id", "name_id", "party_id", "party_name_id"],
   typeCode: ["txn_type", "transaction_type", "type"],
-  invoiceNumber: ["txn_ref_number", "ref_number", "invoice_number", "bill_number"],
+  invoiceNumber: ["txn_ref_number_char", "txn_ref_number", "ref_number", "invoice_number", "bill_number"],
   invoiceDate: ["txn_date", "transaction_date", "date"],
-  dueDate: ["due_date", "payment_due_date"],
-  totalAmount: ["total_amount", "txn_amount", "amount"],
-  balanceAmount: ["balance_amount", "due_amount", "remaining_amount"],
+  dueDate: ["txn_due_date", "due_date", "payment_due_date"],
+  balanceAmount: ["txn_balance_amount", "balance_amount", "due_amount", "remaining_amount"],
+  cashAmount: ["txn_cash_amount", "cash_amount"],
 };
 
+// Verified: kb_lineitems has no item-name column - it only has item_id, a
+// foreign key into kb_items (joined separately in vyaparReader.ts).
 export const LINE_ITEM_FIELD_CANDIDATES = {
-  externalId: ["line_item_id", "item_line_id", "id"],
-  invoiceExternalId: ["txn_id", "transaction_id"],
-  itemName: ["item_name", "name"],
-  quantity: ["item_quantity", "quantity", "qty"],
-  unitPrice: ["item_price", "price_per_unit", "unit_price", "price"],
-  amount: ["item_amount", "amount", "total"],
+  externalId: ["lineitem_id", "line_item_id", "item_line_id", "id"],
+  invoiceExternalId: ["lineitem_txn_id", "txn_id", "transaction_id"],
+  itemId: ["item_id"],
+  quantity: ["quantity", "item_quantity", "qty"],
+  unitPrice: ["priceperunit", "item_price", "price_per_unit", "unit_price", "price"],
+  amount: ["total_amount", "item_amount", "amount", "total"],
 };
 
 export const INVENTORY_FIELD_CANDIDATES = {
   externalId: ["item_id", "id"],
   name: ["item_name", "name"],
-  currentStock: ["current_stock", "stock_quantity", "opening_stock"],
-  salePrice: ["sale_price", "selling_price"],
-  purchasePrice: ["purchase_price", "cost_price"],
+  currentStock: ["item_stock_quantity", "current_stock", "stock_quantity", "opening_stock"],
+  salePrice: ["item_sale_unit_price", "sale_unit_price", "sale_price", "selling_price"],
+  purchasePrice: ["item_purchase_unit_price", "purchase_unit_price", "purchase_price", "cost_price"],
 };
 
-// Vyapar's txn_type is typically a small integer or short code. This maps
-// the *common* convention seen across Vyapar-style apps to our enum;
-// anything unrecognized falls back to "OTHER" rather than guessing wrong.
-// VERIFY against `select distinct txn_type from kb_transactions` on a real
-// backup and adjust.
+// Verified against a real backup for types 1-4 (2000+ real rows each for
+// 1-3, confirmed via presence/absence of line items and cash movement
+// direction). Types 5/6/65 appeared with no line items and no clear
+// pattern - left as OTHER rather than guessing.
 export const TXN_TYPE_MAP: Record<string, "SALE" | "SALE_RETURN" | "PURCHASE" | "PURCHASE_RETURN" | "PAYMENT_IN" | "PAYMENT_OUT"> = {
   "1": "SALE",
   sale: "SALE",

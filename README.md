@@ -12,7 +12,10 @@ SQLite database (unencrypted). Once a day, a scheduled job:
 
 1. **Fetches** the newest `.vyb` from a Google Drive folder (via a service account).
 2. **Unzips** it in memory to get the `.vyp` SQLite file.
-3. **Reads** `kb_names` (customers), `kb_transactions` (invoices), `kb_lineitems`, and `kb_item` (inventory).
+3. **Reads** `kb_names` (customers, joined to `kb_party_groups` for broker
+   attribution - see Brokerage below), `kb_transactions` (invoices),
+   `kb_lineitems` (joined to `kb_items` for item names), and `kb_item`
+   (inventory).
 4. **Syncs** the normalized data into a multi-tenant Postgres database (idempotent upserts, safe to re-run).
 
 The Next.js app reads from that Postgres database to power the dashboard,
@@ -20,12 +23,33 @@ WhatsApp reminder links, and the AI chat assistant.
 
 ## Brokerage tracking (`/brokerage`)
 
-A second, unrelated feature: upload a raw monthly "Sale Report" Excel
-(`.xlsx`, with a `Sale Items` sheet and a `Bro.` column) and it's split
-broker-wise, with 0.5% commission computed per broker, a payment tracker
-(who's been paid, who's still owed, settle-all), and analytics (monthly
-comparison, top buying parties, parties who dropped off month over month).
-Export any broker's statement as WhatsApp text, Excel, or PDF.
+A second, unrelated feature: split sales broker-wise, compute 0.5% commission
+per broker, track who's been paid vs. still owed (settle-all supported), and
+show analytics (monthly comparison, top buying parties, parties who dropped
+off month over month). Export any broker's statement as WhatsApp text, Excel,
+or PDF.
+
+Reports get into the system two ways:
+
+- **Automatically, from the daily Vyapar sync** (no manual step). Vyapar
+  tracks brokers as **party groups** that customers belong to (e.g. a group
+  literally named "Rajesh" or "Tota Brokar") - `kb_names.name_group_id` joins
+  to `kb_party_groups`. Every SALE line item from a customer in a group that
+  matches a known broker (`BROKER_MAP` in `src/lib/brokerage/brokerRules.ts`,
+  after stripping a trailing "broker"/"brokar" word) is attributed to that
+  broker; everything else (geographic/functional groups like "MAUGANJ" or
+  "General", or no group at all) counts as Shop Own Sale, same as an
+  ungrouped customer. The sync derives one report per calendar month found in
+  the backup but only **upserts the current and previous month** into
+  `BrokerageReport` (`source: VYAPAR_SYNC`) on every run - older, already-
+  settled months aren't reprocessed daily. A derived report keeps the same
+  row id across re-syncs (only its broker/transaction rows are replaced), so
+  any payments you've recorded against it are never lost to the next day's
+  sync.
+- **Manually**, by uploading a raw monthly "Sale Report" Excel (`.xlsx`, with
+  a `Sale Items` sheet and a `Bro.` column) on the Brokerage page
+  (`source: UPLOAD`) - useful for backfilling months from before this app
+  existed, or a business that doesn't use Vyapar for a given sale.
 
 This is a separate business domain from Vyapar dues tracking - a broker earns
 commission on sales regardless of which customer bought - so it has its own
@@ -40,25 +64,35 @@ Deliberately split this way: the sync pipeline uses native/Node-only
 packages (`better-sqlite3`, `adm-zip`, `googleapis`) that don't belong in a
 Vercel serverless bundle, so it runs as a plain scheduled script instead.
 
-## ⚠️ Before going live: verify the Vyapar column mapping
+## Vyapar column mapping
 
-Vyapar's internal SQLite schema isn't publicly documented. `src/lib/sync/columnMap.ts`
-has a best-effort mapping (with fallback candidates) based on the table
-names in the product spec and common Vyapar conventions - **it has not been
-verified against a real backup.**
+Vyapar's internal SQLite schema isn't publicly documented, so
+`src/lib/sync/columnMap.ts` resolves columns by fuzzy name matching against a
+list of candidates rather than assuming fixed names. The mapping has been
+**verified against a real production `.vyb` backup** (4,600+ transactions,
+years of history), which caught two things that don't match the "obvious"
+column names:
 
-Run this once you have a real `.vyb` file:
+- There's no direct total-amount column on a transaction. A sale's true total
+  is the sum of its own `kb_lineitems.total_amount` rows; `txn_cash_amount`
+  (which looks like a total-amount candidate by name) is actually the amount
+  for *payment*-type transactions (types 3/4) and is ~0 for credit sales -
+  using it as the total silently zeroes out `totalAmount`/`balanceAmount` for
+  most invoices.
+- `kb_lineitems` has no item-name column at all, only `item_id`; the name
+  lives on `kb_items.item_name` and has to be joined in.
+
+If your Vyapar schema differs (e.g. a different app version), run:
 
 ```bash
 npm run inspect-vyp -- /path/to/your-backup.vyb
 ```
 
-It prints every table, its columns, and a sample row. Compare that against
-`src/lib/sync/columnMap.ts` and adjust the candidate column names (and the
-`TXN_TYPE_MAP` codes) if anything doesn't match. The reader resolves columns
-by fuzzy name matching, so small differences often self-correct - but the
-`txn_type` code mapping (which numbers/strings mean "Sale" vs "Payment In"
-etc.) is a guess worth double-checking specifically.
+to print every table, its columns, and a sample row, and compare against
+`src/lib/sync/columnMap.ts`. The `txn_type` code mapping (which numbers mean
+"Sale" vs "Payment In" etc., in `TXN_TYPE_MAP`) is also worth double-checking
+against your own data - types 1/2/3/4 (Sale/Purchase/Payment In/Payment Out)
+are verified; 5/6/65 are left as OTHER for lack of confident evidence.
 
 ## $0-fixed-cost deployment
 

@@ -8,6 +8,11 @@ export type NormalizedCustomer = {
   phone: string | null;
   email: string | null;
   address: string | null;
+  // The Vyapar party group this customer belongs to (kb_party_groups),
+  // e.g. "Tota Brokar" - some shops use this to track which broker
+  // introduced/handles a customer. Null if ungrouped or the group table
+  // isn't present. See src/lib/sync/brokerageFromVyapar.ts.
+  partyGroupName: string | null;
 };
 
 export type NormalizedInvoiceType =

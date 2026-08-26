@@ -172,6 +172,11 @@ model SyncRun {
 // above (a broker earns commission on sales regardless of which customer
 // bought), so it gets its own tables rather than reusing Customer/Invoice.
 
+enum BrokerageReportSource {
+  UPLOAD // manually uploaded Sale Report Excel
+  VYAPAR_SYNC // derived automatically from the daily Vyapar backup
+}
+
 model BrokerageReport {
   id        String @id @default(uuid())
   companyId String
@@ -180,6 +185,7 @@ model BrokerageReport {
   fileSize   Int
   uploadedAt DateTime @default(now())
   month      String? // YYYY-MM, detected from the most common transaction date
+  source     BrokerageReportSource @default(UPLOAD)
 
   totalTransactions Int
   totalAmount       Decimal @db.Decimal(14, 2)
@@ -193,6 +199,10 @@ model BrokerageReport {
 
   @@index([companyId, uploadedAt])
   @@index([companyId, month])
+  // One derived report per month, kept stable across daily re-syncs so
+  // BrokeragePayment rows (linked by reportId) survive re-derivation -
+  // see upsertDerivedReport in src/lib/brokerage/reportService.ts.
+  @@unique([companyId, month, source])
 }
 
 model BrokerageBrokerSummary {

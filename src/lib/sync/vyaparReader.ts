@@ -4,6 +4,7 @@ import {
   CUSTOMER_FIELD_CANDIDATES,
   INVENTORY_FIELD_CANDIDATES,
   LINE_ITEM_FIELD_CANDIDATES,
+  PARTY_GROUP_FIELD_CANDIDATES,
   TABLE_CANDIDATES,
   TRANSACTION_FIELD_CANDIDATES,
   TXN_TYPE_MAP,
@@ -34,6 +35,15 @@ function resolveTable(db: Database.Database, candidates: string[], logicalName: 
       `Tables present in this .vyp file: ${tables.join(", ")}. ` +
       `Run "npm run inspect-vyp -- <file.vyp>" and update src/lib/sync/columnMap.ts.`,
   );
+}
+
+function tryResolveTable(db: Database.Database, candidates: string[]): string | null {
+  const tables = listTables(db);
+  for (const c of candidates) {
+    const found = tables.find((t) => t.toLowerCase() === c.toLowerCase());
+    if (found) return found;
+  }
+  return null;
 }
 
 function listColumns(db: Database.Database, table: string): string[] {
@@ -78,8 +88,9 @@ function toNullableNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Vyapar stores dates as epoch millis, epoch seconds, or "YYYY-MM-DD" text
- * depending on version - handle whichever shows up. */
+/** Verified: Vyapar stores dates as "YYYY-MM-DD HH:MM:SS" text (parses
+ * correctly as UTC in Node). Also handles epoch numbers defensively in
+ * case a different export version uses them. */
 function toDate(value: unknown): Date | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") {
@@ -98,6 +109,24 @@ function toStringOrNull(value: unknown): string | null {
   return s.length ? s : null;
 }
 
+function readPartyGroups(db: Database.Database): Map<string, string> {
+  const table = tryResolveTable(db, TABLE_CANDIDATES.partyGroups);
+  if (!table) return new Map();
+  const columns = listColumns(db, table);
+  const idCol = resolveColumn(columns, PARTY_GROUP_FIELD_CANDIDATES.id, "id", table, false);
+  const nameCol = resolveColumn(columns, PARTY_GROUP_FIELD_CANDIDATES.name, "name", table, false);
+  if (!idCol || !nameCol) return new Map();
+
+  const rows = db.prepare(`select * from "${table}"`).all() as Record<string, unknown>[];
+  const map = new Map<string, string>();
+  for (const r of rows) {
+    const id = r[idCol];
+    const name = toStringOrNull(r[nameCol]);
+    if (id !== null && id !== undefined && name) map.set(String(id), name);
+  }
+  return map;
+}
+
 export function readCustomers(db: Database.Database): NormalizedCustomer[] {
   const table = resolveTable(db, TABLE_CANDIDATES.customers, "customers (kb_names)");
   const columns = listColumns(db, table);
@@ -107,60 +136,25 @@ export function readCustomers(db: Database.Database): NormalizedCustomer[] {
     phone: resolveColumn(columns, CUSTOMER_FIELD_CANDIDATES.phone, "phone", table, false),
     email: resolveColumn(columns, CUSTOMER_FIELD_CANDIDATES.email, "email", table, false),
     address: resolveColumn(columns, CUSTOMER_FIELD_CANDIDATES.address, "address", table, false),
+    groupId: resolveColumn(columns, CUSTOMER_FIELD_CANDIDATES.groupId, "groupId", table, false),
   };
-
-  const rows = db.prepare(`select * from "${table}"`).all() as Record<string, unknown>[];
-  return rows
-    .filter((r) => r[col.externalId] !== null && r[col.externalId] !== undefined)
-    .map((r) => ({
-      externalId: String(r[col.externalId]),
-      name: toStringOrNull(r[col.name]) ?? "Unknown",
-      phone: col.phone ? toStringOrNull(r[col.phone]) : null,
-      email: col.email ? toStringOrNull(r[col.email]) : null,
-      address: col.address ? toStringOrNull(r[col.address]) : null,
-    }));
-}
-
-export function readTransactions(db: Database.Database): NormalizedInvoice[] {
-  const table = resolveTable(db, TABLE_CANDIDATES.transactions, "transactions (kb_transactions)");
-  const columns = listColumns(db, table);
-  const col = {
-    externalId: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.externalId, "externalId", table)!,
-    customerExternalId: resolveColumn(
-      columns,
-      TRANSACTION_FIELD_CANDIDATES.customerExternalId,
-      "customerExternalId",
-      table,
-    )!,
-    typeCode: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.typeCode, "typeCode", table)!,
-    invoiceNumber: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.invoiceNumber, "invoiceNumber", table, false),
-    invoiceDate: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.invoiceDate, "invoiceDate", table)!,
-    dueDate: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.dueDate, "dueDate", table, false),
-    totalAmount: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.totalAmount, "totalAmount", table)!,
-    balanceAmount: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.balanceAmount, "balanceAmount", table, false),
-  };
+  const partyGroups = readPartyGroups(db);
 
   const rows = db.prepare(`select * from "${table}"`).all() as Record<string, unknown>[];
   return rows
     .filter((r) => r[col.externalId] !== null && r[col.externalId] !== undefined)
     .map((r) => {
-      const total = toNumber(r[col.totalAmount]);
-      // Some Vyapar versions store remaining balance directly; others only
-      // ever store the full amount (fully-paid-or-not tracked elsewhere).
-      // If we can't find a balance column, assume unpaid (safer for a
-      // collections tool than silently assuming everything is settled).
-      const balance = col.balanceAmount ? toNumber(r[col.balanceAmount]) : total;
-      const rawType = toStringOrNull(r[col.typeCode])?.toLowerCase() ?? "";
+      const groupId = col.groupId ? r[col.groupId] : null;
+      const partyGroupName =
+        groupId !== null && groupId !== undefined ? (partyGroups.get(String(groupId)) ?? null) : null;
       return {
         externalId: String(r[col.externalId]),
-        customerExternalId: String(r[col.customerExternalId]),
-        type: TXN_TYPE_MAP[rawType] ?? "OTHER",
-        invoiceNumber: col.invoiceNumber ? toStringOrNull(r[col.invoiceNumber]) : null,
-        invoiceDate: toDate(r[col.invoiceDate]) ?? new Date(),
-        dueDate: col.dueDate ? toDate(r[col.dueDate]) : null,
-        totalAmount: total,
-        paidAmount: Math.max(0, total - balance),
-      } satisfies NormalizedInvoice;
+        name: toStringOrNull(r[col.name]) ?? "Unknown",
+        phone: col.phone ? toStringOrNull(r[col.phone]) : null,
+        email: col.email ? toStringOrNull(r[col.email]) : null,
+        address: col.address ? toStringOrNull(r[col.address]) : null,
+        partyGroupName,
+      };
     });
 }
 
@@ -175,29 +169,105 @@ export function readLineItems(db: Database.Database): NormalizedLineItem[] {
       "invoiceExternalId",
       table,
     )!,
-    itemName: resolveColumn(columns, LINE_ITEM_FIELD_CANDIDATES.itemName, "itemName", table)!,
+    itemId: resolveColumn(columns, LINE_ITEM_FIELD_CANDIDATES.itemId, "itemId", table, false),
     quantity: resolveColumn(columns, LINE_ITEM_FIELD_CANDIDATES.quantity, "quantity", table, false),
     unitPrice: resolveColumn(columns, LINE_ITEM_FIELD_CANDIDATES.unitPrice, "unitPrice", table, false),
     amount: resolveColumn(columns, LINE_ITEM_FIELD_CANDIDATES.amount, "amount", table)!,
   };
 
+  // Item names live in a separate table (kb_items), joined by item_id.
+  const itemNames = new Map<string, string>();
+  const itemsTable = tryResolveTable(db, TABLE_CANDIDATES.inventory);
+  if (itemsTable) {
+    const itemsColumns = listColumns(db, itemsTable);
+    const itemIdCol = resolveColumn(itemsColumns, INVENTORY_FIELD_CANDIDATES.externalId, "id", itemsTable, false);
+    const itemNameCol = resolveColumn(itemsColumns, INVENTORY_FIELD_CANDIDATES.name, "name", itemsTable, false);
+    if (itemIdCol && itemNameCol) {
+      const itemRows = db.prepare(`select "${itemIdCol}" as id, "${itemNameCol}" as name from "${itemsTable}"`).all() as {
+        id: unknown;
+        name: unknown;
+      }[];
+      for (const r of itemRows) {
+        const name = toStringOrNull(r.name);
+        if (r.id !== null && r.id !== undefined && name) itemNames.set(String(r.id), name);
+      }
+    }
+  }
+
   const rows = db.prepare(`select * from "${table}"`).all() as Record<string, unknown>[];
   return rows
     .filter((r) => r[col.externalId] !== null && r[col.externalId] !== undefined)
-    .map((r) => ({
-      externalId: String(r[col.externalId]),
-      invoiceExternalId: String(r[col.invoiceExternalId]),
-      itemName: toStringOrNull(r[col.itemName]) ?? "Unknown item",
-      quantity: col.quantity ? toNumber(r[col.quantity]) : 0,
-      unitPrice: col.unitPrice ? toNumber(r[col.unitPrice]) : 0,
-      amount: toNumber(r[col.amount]),
-    }));
+    .map((r) => {
+      const itemId = col.itemId ? r[col.itemId] : null;
+      const itemName =
+        (itemId !== null && itemId !== undefined ? itemNames.get(String(itemId)) : undefined) ?? "Unknown item";
+      return {
+        externalId: String(r[col.externalId]),
+        invoiceExternalId: String(r[col.invoiceExternalId]),
+        itemName,
+        quantity: col.quantity ? toNumber(r[col.quantity]) : 0,
+        unitPrice: col.unitPrice ? toNumber(r[col.unitPrice]) : 0,
+        amount: toNumber(r[col.amount]),
+      };
+    });
+}
+
+/** Verified against a real backup: kb_transactions has no direct "total
+ * amount" column - a transaction's total is the sum of its own line
+ * items. `lineItemTotalsByInvoice` must be built from readLineItems()
+ * output before calling this. Falls back to the transaction's cash amount
+ * for line-item-less transactions (payments), which do carry a real
+ * amount there. */
+export function readTransactions(db: Database.Database, lineItemTotalsByInvoice: Map<string, number>): NormalizedInvoice[] {
+  const table = resolveTable(db, TABLE_CANDIDATES.transactions, "transactions (kb_transactions)");
+  const columns = listColumns(db, table);
+  const col = {
+    externalId: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.externalId, "externalId", table)!,
+    customerExternalId: resolveColumn(
+      columns,
+      TRANSACTION_FIELD_CANDIDATES.customerExternalId,
+      "customerExternalId",
+      table,
+    )!,
+    typeCode: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.typeCode, "typeCode", table)!,
+    invoiceNumber: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.invoiceNumber, "invoiceNumber", table, false),
+    invoiceDate: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.invoiceDate, "invoiceDate", table)!,
+    dueDate: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.dueDate, "dueDate", table, false),
+    balanceAmount: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.balanceAmount, "balanceAmount", table, false),
+    cashAmount: resolveColumn(columns, TRANSACTION_FIELD_CANDIDATES.cashAmount, "cashAmount", table, false),
+  };
+
+  const rows = db.prepare(`select * from "${table}"`).all() as Record<string, unknown>[];
+  return rows
+    .filter((r) => r[col.externalId] !== null && r[col.externalId] !== undefined)
+    .map((r) => {
+      const externalId = String(r[col.externalId]);
+      const cashAmount = col.cashAmount ? toNumber(r[col.cashAmount]) : 0;
+      const lineItemTotal = lineItemTotalsByInvoice.get(externalId);
+      const total = lineItemTotal && lineItemTotal > 0 ? lineItemTotal : cashAmount;
+      // txn_balance_amount is what Vyapar itself considers still
+      // outstanding on this transaction (already accounts for any linked
+      // payments) - if we can't find it, assume unpaid rather than
+      // silently assuming everything is settled.
+      const balance = col.balanceAmount ? toNumber(r[col.balanceAmount]) : total;
+      const rawType = toStringOrNull(r[col.typeCode])?.toLowerCase() ?? "";
+      return {
+        externalId,
+        customerExternalId: String(r[col.customerExternalId]),
+        type: TXN_TYPE_MAP[rawType] ?? "OTHER",
+        invoiceNumber: col.invoiceNumber ? toStringOrNull(r[col.invoiceNumber]) : null,
+        invoiceDate: toDate(r[col.invoiceDate]) ?? new Date(),
+        dueDate: col.dueDate ? toDate(r[col.dueDate]) : null,
+        totalAmount: total,
+        paidAmount: Math.max(0, total - balance),
+      } satisfies NormalizedInvoice;
+    });
 }
 
 export function readInventory(db: Database.Database): NormalizedInventoryItem[] {
   let table: string;
   try {
-    table = resolveTable(db, TABLE_CANDIDATES.inventory, "inventory (kb_item)");
+    table = resolveTable(db, TABLE_CANDIDATES.inventory, "inventory (kb_items)");
   } catch (e) {
     if (e instanceof SchemaResolutionError) return []; // inventory sync is best-effort for V1
     throw e;
@@ -232,10 +302,19 @@ export function readInventory(db: Database.Database): NormalizedInventoryItem[] 
 export function readVyaparExtract(vypFilePath: string): VyaparExtract {
   const db = new Database(vypFilePath, { readonly: true, fileMustExist: true });
   try {
+    const customers = readCustomers(db);
+    const lineItems = readLineItems(db);
+
+    const lineItemTotalsByInvoice = new Map<string, number>();
+    for (const li of lineItems) {
+      lineItemTotalsByInvoice.set(li.invoiceExternalId, (lineItemTotalsByInvoice.get(li.invoiceExternalId) ?? 0) + li.amount);
+    }
+    const invoices = readTransactions(db, lineItemTotalsByInvoice);
+
     return {
-      customers: readCustomers(db),
-      invoices: readTransactions(db),
-      lineItems: readLineItems(db),
+      customers,
+      invoices,
+      lineItems,
       inventoryItems: readInventory(db),
     };
   } finally {

@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { getSyncEnv } from "@/lib/env";
+import { upsertDerivedReport } from "@/lib/brokerage/reportService";
 
 import { downloadFile, findLatestBackup } from "./driveClient";
 import { cleanupExtractDir, unpackVyb } from "./unpackVyb";
 import { readVyaparExtract } from "./vyaparReader";
+import { deriveBrokerageByMonth } from "./brokerageFromVyapar";
 import type { VyaparExtract } from "./types";
 
 export type SyncSummary = {
@@ -12,8 +14,38 @@ export type SyncSummary = {
   invoicesUpserted: number;
   lineItemsUpserted: number;
   inventoryUpserted: number;
+  brokerageReportsUpserted: number;
   warnings: string[];
 };
+
+// Only recent months are re-derived into BrokerageReport on every daily
+// sync - reprocessing years of already-settled Vyapar history on every run
+// would be wasted work. A broker's own commission month closes out well
+// within this window in practice.
+const BROKERAGE_SYNC_RECENT_MONTHS = 2;
+
+function recentMonthKeys(count: number): Set<string> {
+  const keys = new Set<string>();
+  const now = new Date();
+  for (let i = 0; i < count; i++) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    keys.add(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+  return keys;
+}
+
+async function syncDerivedBrokerage(companyId: string, extract: VyaparExtract, sourceFileName: string): Promise<number> {
+  const reportsByMonth = deriveBrokerageByMonth(extract);
+  const recentMonths = recentMonthKeys(BROKERAGE_SYNC_RECENT_MONTHS);
+
+  let upserted = 0;
+  for (const [month, parsed] of reportsByMonth) {
+    if (!recentMonths.has(month)) continue;
+    await upsertDerivedReport(companyId, month, `Vyapar sync: ${sourceFileName}`, parsed);
+    upserted++;
+  }
+  return upserted;
+}
 
 function addDays(date: Date, days: number): Date {
   const d = new Date(date);
@@ -25,7 +57,7 @@ export async function persistExtract(
   companyId: string,
   extract: VyaparExtract,
   defaultPaymentTermsDays: number,
-): Promise<Omit<SyncSummary, "sourceFileName">> {
+): Promise<Omit<SyncSummary, "sourceFileName" | "brokerageReportsUpserted">> {
   const warnings: string[] = [];
 
   // --- Customers first, so invoices can resolve their internal id ---
@@ -36,7 +68,7 @@ export async function persistExtract(
       const row = await prisma.customer.upsert({
         where: { companyId_externalId: { companyId, externalId: c.externalId } },
         update: { name: c.name, phone: c.phone, email: c.email, address: c.address },
-        create: { companyId, ...c },
+        create: { companyId, externalId: c.externalId, name: c.name, phone: c.phone, email: c.email, address: c.address },
       });
       customerIdByExternalId.set(c.externalId, row.id);
       customersUpserted++;
@@ -167,6 +199,13 @@ export async function runSync(): Promise<SyncSummary> {
       const extract = readVyaparExtract(vypPath);
       const result = await persistExtract(companyId, extract, env.DEFAULT_PAYMENT_TERMS_DAYS);
 
+      let brokerageReportsUpserted = 0;
+      try {
+        brokerageReportsUpserted = await syncDerivedBrokerage(companyId, extract, latest.name);
+      } catch (e) {
+        result.warnings.push(`Brokerage derivation: ${(e as Error).message}`);
+      }
+
       await prisma.syncRun.update({
         where: { id: syncRun.id },
         data: {
@@ -181,7 +220,7 @@ export async function runSync(): Promise<SyncSummary> {
         },
       });
 
-      return { sourceFileName: latest.name, ...result };
+      return { sourceFileName: latest.name, ...result, brokerageReportsUpserted };
     } finally {
       cleanupExtractDir(extractDir);
     }
