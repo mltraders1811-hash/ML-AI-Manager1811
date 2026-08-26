@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ActionCenterList } from "@/components/ActionCenterList";
 import { LogoutButton } from "@/components/LogoutButton";
 import { MetricCard } from "@/components/MetricCard";
+import { SyncNowButton } from "@/components/SyncNowButton";
 import { getEnv } from "@/lib/env";
 import { formatInr } from "@/lib/format";
 import { getLastSyncRun, getOverdueCustomers, getQuickMetrics } from "@/lib/metrics";
@@ -45,6 +46,7 @@ export default async function DashboardPage() {
           <Link href="/chat" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
             AI Chat
           </Link>
+          <SyncNowButton />
           <LogoutButton />
         </div>
       </header>

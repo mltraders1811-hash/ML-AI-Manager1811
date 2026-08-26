@@ -138,13 +138,30 @@ Push this repo to GitHub, then add these as **repository secrets**
 - `GDRIVE_BACKUP_FOLDER_ID`
 
 `.github/workflows/daily-sync.yml` runs it every day at 08:30 IST, and can
-also be triggered manually from the Actions tab.
+also be triggered manually from the Actions tab - or from the **"Sync Now"**
+button on the dashboard (see step 6).
 
 ### 5. Dashboard (Vercel)
 
 Import the repo into Vercel, set the same env vars (`DATABASE_URL`,
 `DEFAULT_COMPANY_ID`, `ADMIN_PASSCODE_HASH`, `SESSION_SECRET`) plus
 `ANTHROPIC_API_KEY` for the chat assistant. Deploy - that's it, no server to manage.
+
+### 6. "Sync Now" button (optional)
+
+The dashboard has a **Sync Now** button that kicks off the same GitHub
+Actions job on demand, instead of waiting for the 08:30 IST schedule (it
+triggers the workflow rather than re-running the sync inside Vercel, since
+the sync needs native Node modules that don't belong in a Vercel function -
+see "How it works" above). To enable it:
+
+1. On GitHub, go to **Settings → Developer settings → Personal access
+   tokens → Fine-grained tokens**, create one scoped to just this repo, with
+   **Actions: Read and write** permission.
+2. Add it to Vercel as `GITHUB_SYNC_TOKEN`, then redeploy.
+
+Without this token the button still shows but returns a clear "not set up
+yet" message instead of failing silently.
 
 ## Local development
 
