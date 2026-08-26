@@ -3,6 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { getIstTodayRange } from "@/lib/dateIst";
 import { getOverdueCustomers, getQuickMetrics } from "@/lib/metrics";
+import { topParties as brokerageTopParties } from "@/lib/brokerage/analyticsService";
 
 // Every tool the AI chat assistant can call. Deliberately NOT "run this SQL
 // the model wrote" - each tool is a fixed, parameterized query against our
@@ -51,7 +52,35 @@ export const AI_TOOLS: Anthropic.Tool[] = [
       required: ["start_date", "end_date"],
     },
   },
+  {
+    name: "list_unpaid_brokers",
+    description:
+      "Brokerage commission balance owed to each broker, summed across every uploaded sale report (owed minus paid so far). This is a separate feature from customer dues - brokers earn 0.5% commission on sales, customers owe for goods bought on credit.",
+    input_schema: {
+      type: "object",
+      properties: {
+        broker_name: { type: "string", description: "Optional - filter to one broker by (partial) name, case-insensitive." },
+      },
+    },
+  },
+  {
+    name: "get_latest_brokerage_report_summary",
+    description: "Per-broker totals (transactions, sale amount, brokerage owed) from the most recently uploaded sale report.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_brokerage_top_parties",
+    description: "Top buying parties across all uploaded sale reports, by total purchase amount.",
+    input_schema: {
+      type: "object",
+      properties: { limit: { type: "number", description: "Max parties to return. Defaults to 10." } },
+    },
+  },
 ];
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
 
 export async function executeTool(companyId: string, name: string, input: Record<string, unknown>): Promise<unknown> {
   switch (name) {
@@ -117,6 +146,56 @@ export async function executeTool(companyId: string, name: string, input: Record
         total_sales: agg._sum.totalAmount?.toNumber() ?? 0,
         invoice_count: agg._count,
       };
+    }
+
+    case "list_unpaid_brokers": {
+      const nameFilter = typeof input.broker_name === "string" ? input.broker_name.toLowerCase() : undefined;
+      const summaries = await prisma.brokerageBrokerSummary.findMany({
+        where: { report: { companyId }, isShopOwn: false },
+      });
+      const owedByBroker = new Map<string, number>();
+      for (const s of summaries) {
+        owedByBroker.set(s.name, (owedByBroker.get(s.name) ?? 0) + s.totalBrokerage.toNumber());
+      }
+      const payments = await prisma.brokeragePayment.findMany({ where: { companyId } });
+      const paidByBroker = new Map<string, number>();
+      for (const p of payments) {
+        paidByBroker.set(p.broker, (paidByBroker.get(p.broker) ?? 0) + p.amount.toNumber());
+      }
+      let results = Array.from(owedByBroker.entries()).map(([broker, owed]) => {
+        const paid = paidByBroker.get(broker) ?? 0;
+        return { broker, total_owed: round2(owed), total_paid: round2(paid), balance: round2(owed - paid) };
+      });
+      if (nameFilter) results = results.filter((r) => r.broker.toLowerCase().includes(nameFilter));
+      return results
+        .filter((r) => r.balance > 0.005)
+        .sort((a, b) => b.balance - a.balance);
+    }
+
+    case "get_latest_brokerage_report_summary": {
+      const report = await prisma.brokerageReport.findFirst({
+        where: { companyId },
+        orderBy: { uploadedAt: "desc" },
+        include: { brokers: true },
+      });
+      if (!report) return { error: "No sale reports uploaded yet" };
+      return {
+        filename: report.filename,
+        month: report.month,
+        brokers: report.brokers.map((b) => ({
+          name: b.name,
+          is_shop_own: b.isShopOwn,
+          transaction_count: b.transactionCount,
+          total_amount: b.totalAmount.toNumber(),
+          total_brokerage: b.totalBrokerage.toNumber(),
+        })),
+      };
+    }
+
+    case "get_brokerage_top_parties": {
+      const limit = typeof input.limit === "number" ? input.limit : 10;
+      const result = await brokerageTopParties(companyId, undefined, limit);
+      return result.parties.map((p) => ({ name: p.name, amount: p.amount, purchases: p.txns }));
     }
 
     default:

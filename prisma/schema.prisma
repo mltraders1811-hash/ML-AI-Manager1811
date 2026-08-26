@@ -23,6 +23,9 @@ model Company {
   invoices       Invoice[]
   inventoryItems InventoryItem[]
   syncRuns       SyncRun[]
+
+  brokerageReports  BrokerageReport[]
+  brokeragePayments BrokeragePayment[]
 }
 
 model Customer {
@@ -160,4 +163,89 @@ model SyncRun {
   company Company @relation(fields: [companyId], references: [id])
 
   @@index([companyId, startedAt])
+}
+
+// ---------- Brokerage tracking ----------
+// A second, unrelated feature: splitting an uploaded raw "Sale Report"
+// Excel broker-wise and tracking brokerage (commission) owed to each
+// broker. Distinct business domain from the Vyapar customer-dues tracking
+// above (a broker earns commission on sales regardless of which customer
+// bought), so it gets its own tables rather than reusing Customer/Invoice.
+
+model BrokerageReport {
+  id        String @id @default(uuid())
+  companyId String
+
+  filename   String
+  fileSize   Int
+  uploadedAt DateTime @default(now())
+  month      String? // YYYY-MM, detected from the most common transaction date
+
+  totalTransactions Int
+  totalAmount       Decimal @db.Decimal(14, 2)
+  totalBrokerage    Decimal @db.Decimal(14, 2)
+  brokerCount       Int
+  shopOwnCount      Int
+
+  company  Company                  @relation(fields: [companyId], references: [id])
+  brokers  BrokerageBrokerSummary[]
+  payments BrokeragePayment[]
+
+  @@index([companyId, uploadedAt])
+  @@index([companyId, month])
+}
+
+model BrokerageBrokerSummary {
+  id        String @id @default(uuid())
+  companyId String
+  reportId  String
+
+  name             String
+  isShopOwn        Boolean @default(false)
+  totalQty         Decimal @db.Decimal(14, 2)
+  totalAmount      Decimal @db.Decimal(14, 2)
+  totalBrokerage   Decimal @db.Decimal(14, 2)
+  transactionCount Int
+
+  report       BrokerageReport        @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  transactions BrokerageTransaction[]
+
+  @@unique([reportId, name])
+}
+
+model BrokerageTransaction {
+  id              String @id @default(uuid())
+  companyId       String
+  brokerSummaryId String
+
+  date      String // as originally written, e.g. "05/08/2026"
+  dateIso   String? // YYYY-MM-DD, used for analytics
+  party     String
+  item      String
+  quantity  Decimal @db.Decimal(14, 3)
+  price     Decimal @db.Decimal(14, 2)
+  amount    Decimal @db.Decimal(14, 2)
+  brokerage Decimal @db.Decimal(14, 2)
+
+  brokerSummary BrokerageBrokerSummary @relation(fields: [brokerSummaryId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, brokerSummaryId])
+}
+
+model BrokeragePayment {
+  id        String @id @default(uuid())
+  companyId String
+  reportId  String
+
+  broker String
+  amount Decimal @db.Decimal(14, 2)
+  note   String?
+  paidOn String // YYYY-MM-DD
+
+  createdAt DateTime @default(now())
+
+  company Company         @relation(fields: [companyId], references: [id])
+  report  BrokerageReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, reportId])
 }

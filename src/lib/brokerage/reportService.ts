@@ -1,0 +1,105 @@
+import { prisma } from "@/lib/prisma";
+import { ApiError } from "@/lib/apiError";
+
+import type { ParsedSaleReport } from "./types";
+
+export async function saveParsedReport(
+  companyId: string,
+  filename: string,
+  fileSize: number,
+  parsed: ParsedSaleReport,
+) {
+  return prisma.$transaction(async (tx) => {
+    const report = await tx.brokerageReport.create({
+      data: {
+        companyId,
+        filename,
+        fileSize,
+        month: parsed.month,
+        totalTransactions: parsed.summary.totalTransactions,
+        totalAmount: parsed.summary.totalAmount,
+        totalBrokerage: parsed.summary.totalBrokerage,
+        brokerCount: parsed.summary.brokerCount,
+        shopOwnCount: parsed.summary.shopOwnCount,
+      },
+    });
+
+    for (const broker of parsed.brokers) {
+      const summary = await tx.brokerageBrokerSummary.create({
+        data: {
+          companyId,
+          reportId: report.id,
+          name: broker.name,
+          isShopOwn: broker.isShopOwn,
+          totalQty: broker.totalQty,
+          totalAmount: broker.totalAmount,
+          totalBrokerage: broker.totalBrokerage,
+          transactionCount: broker.transactionCount,
+        },
+      });
+      if (broker.transactions.length > 0) {
+        await tx.brokerageTransaction.createMany({
+          data: broker.transactions.map((t) => ({
+            companyId,
+            brokerSummaryId: summary.id,
+            date: t.date,
+            dateIso: t.dateIso,
+            party: t.party,
+            item: t.item,
+            quantity: t.quantity,
+            price: t.price,
+            amount: t.amount,
+            brokerage: t.brokerage,
+          })),
+        });
+      }
+    }
+
+    return report;
+  });
+}
+
+export async function listReports(companyId: string) {
+  return prisma.brokerageReport.findMany({
+    where: { companyId },
+    orderBy: { uploadedAt: "desc" },
+    select: {
+      id: true,
+      filename: true,
+      fileSize: true,
+      uploadedAt: true,
+      month: true,
+      totalTransactions: true,
+      totalAmount: true,
+      totalBrokerage: true,
+      brokerCount: true,
+      shopOwnCount: true,
+    },
+  });
+}
+
+export async function getReportWithBrokers(companyId: string, reportId: string) {
+  const report = await prisma.brokerageReport.findFirst({
+    where: { id: reportId, companyId },
+    include: { brokers: { orderBy: { name: "asc" } } },
+  });
+  if (!report) throw new ApiError(404, "Report not found");
+  return report;
+}
+
+export async function getBrokerDetail(companyId: string, reportId: string, brokerName: string) {
+  const report = await prisma.brokerageReport.findFirst({ where: { id: reportId, companyId } });
+  if (!report) throw new ApiError(404, "Report not found");
+
+  const broker = await prisma.brokerageBrokerSummary.findFirst({
+    where: { reportId, name: { equals: brokerName, mode: "insensitive" } },
+    include: { transactions: { orderBy: { dateIso: "asc" } } },
+  });
+  if (!broker) throw new ApiError(404, "Broker not found");
+  return { report, broker };
+}
+
+export async function deleteReport(companyId: string, reportId: string): Promise<void> {
+  const res = await prisma.brokerageReport.deleteMany({ where: { id: reportId, companyId } });
+  if (res.count === 0) throw new ApiError(404, "Report not found");
+}

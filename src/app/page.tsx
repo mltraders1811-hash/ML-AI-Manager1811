@@ -39,6 +39,9 @@ export default async function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/brokerage" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
+            Brokerage
+          </Link>
           <Link href="/chat" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
             AI Chat
           </Link>

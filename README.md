@@ -18,6 +18,20 @@ SQLite database (unencrypted). Once a day, a scheduled job:
 The Next.js app reads from that Postgres database to power the dashboard,
 WhatsApp reminder links, and the AI chat assistant.
 
+## Brokerage tracking (`/brokerage`)
+
+A second, unrelated feature: upload a raw monthly "Sale Report" Excel
+(`.xlsx`, with a `Sale Items` sheet and a `Bro.` column) and it's split
+broker-wise, with 0.5% commission computed per broker, a payment tracker
+(who's been paid, who's still owed, settle-all), and analytics (monthly
+comparison, top buying parties, parties who dropped off month over month).
+Export any broker's statement as WhatsApp text, Excel, or PDF.
+
+This is a separate business domain from Vyapar dues tracking - a broker earns
+commission on sales regardless of which customer bought - so it has its own
+tables (`BrokerageReport`, `BrokerageBrokerSummary`, `BrokerageTransaction`,
+`BrokeragePayment`), but lives in the same app, same login, same database.
+
 ```
 Google Drive (.vyb)  --daily-->  GitHub Actions job  --sync-->  Postgres  <--read--  Next.js app (Vercel)
 ```
