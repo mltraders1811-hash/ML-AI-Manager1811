@@ -120,10 +120,19 @@ column), since this flag would let that through unprompted too.
 
 ### 2. Google Drive access
 
-1. Create a Google Cloud service account, download its JSON key.
+1. Create a Google Cloud service account, download its JSON key, and enable
+   the **Google Drive API** for that project.
 2. Share your Vyapar backup folder in Drive with the service account's `client_email` (Viewer access).
 3. Copy the folder's ID (from its URL) into `GDRIVE_BACKUP_FOLDER_ID`.
 4. Put the full JSON key (as one line) into `GOOGLE_SERVICE_ACCOUNT_JSON`.
+
+Point `GDRIVE_BACKUP_FOLDER_ID` at the **top-level** folder Vyapar backs up
+to (e.g. "Vyapar Mobile"), not at a month folder inside it. Vyapar files its
+`.vyb` backups into per-month subfolders (`08-2026`, `09-2026`, ...) and
+creates a fresh one on the 1st of each month, so `findLatestBackup` searches
+the folder *and* its subfolders. Pointing directly at a month folder would
+appear to work and then silently stop finding new backups once the month
+rolled over.
 
 ### 3. Admin login
 
