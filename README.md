@@ -108,9 +108,15 @@ are verified; 5/6/65 are left as OTHER for lack of confident evidence.
 1. Create a free project at neon.tech, copy the connection string into `DATABASE_URL`.
 2. Generate a tenant id: `node -e "console.log(crypto.randomUUID())"` → `DEFAULT_COMPANY_ID`.
 
-That's it - the `build` script (`prisma db push && tsx prisma/seed.ts && next build`)
-creates the schema and seeds the V1 company automatically on every Vercel
-deploy, so there's no separate migration step to run by hand.
+That's it - the `build` script (`prisma db push --accept-data-loss && tsx
+prisma/seed.ts && next build`) creates the schema and seeds the V1 company
+automatically on every Vercel deploy, so there's no separate migration step
+to run by hand. `--accept-data-loss` is there because `db push` otherwise
+refuses non-interactively whenever a schema change *could* lose data (even
+a brand-new, currently-empty unique constraint counts) - fine for this
+single-tenant app's low-stakes schema, but worth knowing if you ever add a
+schema change that's genuinely destructive (e.g. dropping a populated
+column), since this flag would let that through unprompted too.
 
 ### 2. Google Drive access
 
