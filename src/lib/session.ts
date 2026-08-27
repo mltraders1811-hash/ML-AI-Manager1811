@@ -3,8 +3,8 @@ import { getEnv } from "@/lib/env";
 // Session tokens only - kept free of Node-only imports (no `crypto` module)
 // because this file is imported by src/middleware.ts, which runs on the
 // Edge runtime. Uses Web Crypto (globalThis.crypto.subtle), which works
-// identically in both Edge and Node.js runtimes. Passcode hashing (which
-// does need Node's `crypto`) lives separately in src/lib/passcode.ts and is
+// identically in both Edge and Node.js runtimes. Password hashing (which
+// does need Node's `crypto`) lives separately in src/lib/password.ts and is
 // only ever imported from the login API route (Node.js runtime).
 
 export const SESSION_COOKIE = "mlam_session";

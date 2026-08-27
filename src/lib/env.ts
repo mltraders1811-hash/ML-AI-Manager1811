@@ -5,7 +5,8 @@ import { z } from "zod";
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   DEFAULT_COMPANY_ID: z.string().uuid("DEFAULT_COMPANY_ID must be a UUID"),
-  ADMIN_PASSCODE_HASH: z.string().min(1, "ADMIN_PASSCODE_HASH is required"),
+  ADMIN_USERNAME: z.string().min(1, "ADMIN_USERNAME is required"),
+  ADMIN_PASSWORD_HASH: z.string().min(1, "ADMIN_PASSWORD_HASH is required"),
   SESSION_SECRET: z.string().min(16, "SESSION_SECRET must be at least 16 characters"),
   ANTHROPIC_API_KEY: z.string().optional(),
   DEFAULT_PAYMENT_TERMS_DAYS: z.coerce.number().int().positive().default(15),

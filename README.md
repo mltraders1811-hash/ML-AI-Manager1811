@@ -119,12 +119,14 @@ deploy, so there's no separate migration step to run by hand.
 3. Copy the folder's ID (from its URL) into `GDRIVE_BACKUP_FOLDER_ID`.
 4. Put the full JSON key (as one line) into `GOOGLE_SERVICE_ACCOUNT_JSON`.
 
-### 3. Admin passcode
+### 3. Admin login
+
+Pick a username for `ADMIN_USERNAME`, then hash a strong password:
 
 ```bash
-node scripts/hash-passcode.mjs 1234        # pick your own passcode
+node scripts/hash-password.mjs 'your-strong-password'
 ```
-Put the output into `ADMIN_PASSCODE_HASH`. Generate `SESSION_SECRET` with
+Put the output into `ADMIN_PASSWORD_HASH`. Generate `SESSION_SECRET` with
 `openssl rand -base64 32`.
 
 ### 4. Daily sync (GitHub Actions)
@@ -144,8 +146,9 @@ button on the dashboard (see step 6).
 ### 5. Dashboard (Vercel)
 
 Import the repo into Vercel, set the same env vars (`DATABASE_URL`,
-`DEFAULT_COMPANY_ID`, `ADMIN_PASSCODE_HASH`, `SESSION_SECRET`) plus
-`ANTHROPIC_API_KEY` for the chat assistant. Deploy - that's it, no server to manage.
+`DEFAULT_COMPANY_ID`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET`)
+plus `ANTHROPIC_API_KEY` for the chat assistant. Deploy - that's it, no server
+to manage.
 
 ### 6. "Sync Now" button (optional)
 
@@ -190,4 +193,4 @@ a `Company` selection layer on top, not a schema migration.
 
 - No inventory UI (synced in the background for the AI assistant/future use, per spec).
 - No WhatsApp Business API - reminders are `wa.me` deep links you tap to send yourself, matching the "1-click" spec exactly and keeping the cost at $0.
-- No multi-user accounts - one shared admin passcode.
+- No multi-user accounts - one shared admin username/password.
