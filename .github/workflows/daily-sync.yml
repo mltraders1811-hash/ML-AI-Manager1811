@@ -24,10 +24,44 @@ jobs:
       - run: npx prisma generate
 
       - name: Run sync
-        run: npm run sync
+        id: sync
+        run: npm run sync 2>&1 | tee /tmp/sync.log
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DEFAULT_COMPANY_ID: ${{ secrets.DEFAULT_COMPANY_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GDRIVE_BACKUP_FOLDER_ID: ${{ secrets.GDRIVE_BACKUP_FOLDER_ID }}
           DEFAULT_PAYMENT_TERMS_DAYS: ${{ vars.DEFAULT_PAYMENT_TERMS_DAYS }}
+
+      # GitHub emails the repo owner when a scheduled workflow fails, but the
+      # default mail says only "workflow failed". These summaries put the
+      # actual reason on the run page so the cause is one click away rather
+      # than buried in a log - the last failure took a while to find.
+      - name: Summarise a successful run
+        if: success()
+        run: |
+          {
+            echo "### Vyapar sync succeeded"
+            echo ""
+            echo '```'
+            grep -A 20 '\[sync\] done' /tmp/sync.log || tail -20 /tmp/sync.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Explain a failed run
+        if: failure()
+        run: |
+          {
+            echo "### Vyapar sync FAILED"
+            echo ""
+            echo "The dashboard is now showing older figures. It will display a warning"
+            echo "banner until a sync succeeds."
+            echo ""
+            echo "**What went wrong:**"
+            echo '```'
+            grep '\[sync\] FAILED' /tmp/sync.log 2>/dev/null || tail -30 /tmp/sync.log 2>/dev/null || echo "The job failed before the sync started - check the steps above."
+            echo '```'
+            echo ""
+            echo "Common causes: the Vyapar backup stopped landing in Google Drive, the"
+            echo "service account lost access to the folder, or a repository secret expired."
+          } >> "$GITHUB_STEP_SUMMARY"

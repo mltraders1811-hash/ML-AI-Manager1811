@@ -233,6 +233,20 @@ see "How it works" above). To enable it:
 Without this token the button still shows but returns a clear "not set up
 yet" message instead of failing silently.
 
+## When the sync breaks
+
+The dashboard shows a banner when the figures can't be trusted to be current:
+a red one if the last sync failed (with the reason), an amber one if no sync
+has succeeded in 36 hours. One missed daily run is tolerated silently; two in
+a row is surfaced. Silently serving yesterday's numbers as if they were
+today's is the failure this guards against.
+
+On the job side, `daily-sync.yml` writes a plain-language summary onto the
+run page saying what went wrong and what usually causes it, so GitHub's
+"workflow failed" email leads somewhere useful. A failure that happens before
+the sync properly starts (bad config, unreachable Drive) is still recorded as
+a failed run so the banner appears.
+
 ## Tests
 
 ```bash

@@ -3,11 +3,13 @@ import Link from "next/link";
 import { ActionCenterList } from "@/components/ActionCenterList";
 import { LogoutButton } from "@/components/LogoutButton";
 import { MetricCard } from "@/components/MetricCard";
+import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 import { SyncNowButton } from "@/components/SyncNowButton";
 import { getEnv } from "@/lib/env";
 import { formatInr } from "@/lib/format";
 import { getLastSyncRun, getQuickMetrics } from "@/lib/metrics";
 import { getOverdueCustomers } from "@/lib/overdue";
+import { getSyncHealth } from "@/lib/syncHealth";
 
 export const dynamic = "force-dynamic"; // always show fresh dues, never cache
 
@@ -23,10 +25,11 @@ function timeAgo(date: Date): string {
 
 export default async function DashboardPage() {
   const { DEFAULT_COMPANY_ID } = getEnv();
-  const [metrics, overdue, lastSync] = await Promise.all([
+  const [metrics, overdue, lastSync, syncHealth] = await Promise.all([
     getQuickMetrics(DEFAULT_COMPANY_ID),
     getOverdueCustomers(DEFAULT_COMPANY_ID),
     getLastSyncRun(DEFAULT_COMPANY_ID),
+    getSyncHealth(DEFAULT_COMPANY_ID),
   ]);
   // The dashboard is a summary - the full list, with search/filters and
   // per-invoice detail, lives at /overdue.
@@ -63,6 +66,8 @@ export default async function DashboardPage() {
           <LogoutButton />
         </div>
       </header>
+
+      <SyncHealthBanner health={syncHealth} />
 
       <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <MetricCard label="Total Outstanding" value={`₹${formatInr(metrics.totalOutstanding)}`} tone="brand" />
