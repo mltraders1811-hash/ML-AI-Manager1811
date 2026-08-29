@@ -74,11 +74,17 @@ export const INVENTORY_FIELD_CANDIDATES = {
   purchasePrice: ["item_purchase_unit_price", "purchase_unit_price", "purchase_price", "cost_price"],
 };
 
-// Verified against a real backup for types 1-4 (2000+ real rows each for
+// Verified against a real backup for types 1-5 (2000+ real rows each for
 // 1-3, confirmed via presence/absence of line items and cash movement
-// direction). Types 5/6/65 appeared with no line items and no clear
-// pattern - left as OTHER rather than guessing.
-export const TXN_TYPE_MAP: Record<string, "SALE" | "SALE_RETURN" | "PURCHASE" | "PURCHASE_RETURN" | "PAYMENT_IN" | "PAYMENT_OUT"> = {
+// direction). Type 5 is confirmed by Vyapar's own txn_description, which
+// literally reads "Receivable opening balance" - one row per party, all
+// dated the first day of the financial year. Type 6 is its supplier-side
+// twin ("Payable opening balance"), which this app has no use for, and 65
+// is a rare sale variant (2 rows) - both left as OTHER.
+export const TXN_TYPE_MAP: Record<
+  string,
+  "SALE" | "SALE_RETURN" | "PURCHASE" | "PURCHASE_RETURN" | "PAYMENT_IN" | "PAYMENT_OUT" | "OPENING_BALANCE"
+> = {
   "1": "SALE",
   sale: "SALE",
   "2": "PURCHASE",
@@ -87,6 +93,8 @@ export const TXN_TYPE_MAP: Record<string, "SALE" | "SALE_RETURN" | "PURCHASE" | 
   payment_in: "PAYMENT_IN",
   "4": "PAYMENT_OUT",
   payment_out: "PAYMENT_OUT",
+  "5": "OPENING_BALANCE",
+  opening_balance: "OPENING_BALANCE",
   "7": "SALE_RETURN",
   sale_return: "SALE_RETURN",
   "8": "PURCHASE_RETURN",

@@ -10,6 +10,7 @@ type OverdueInvoice = {
   date: string;
   dueDate: string;
   invoiceNumber: string | null;
+  isOpeningBalance: boolean;
   amount: number;
   unpaid: number;
   daysOverdue: number;
@@ -267,7 +268,16 @@ export function OverdueClient() {
                       <tbody className="divide-y divide-neutral-200">
                         {c.invoices.map((inv) => (
                           <tr key={inv.invoiceId} className={inv.isOverdue ? "" : "text-neutral-400"}>
-                            <td className="py-1.5">{inv.date}</td>
+                            <td className="py-1.5">
+                              {inv.isOpeningBalance ? (
+                                <span title="Carried over from before this backup's history">
+                                  Purana baki{" "}
+                                  <span className="text-neutral-400">({inv.date})</span>
+                                </span>
+                              ) : (
+                                inv.date
+                              )}
+                            </td>
                             <td className="py-1.5">{inv.dueDate}</td>
                             <td className="py-1.5 text-right">₹{formatInr(inv.amount)}</td>
                             <td className="py-1.5 text-right font-medium">₹{formatInr(inv.unpaid)}</td>

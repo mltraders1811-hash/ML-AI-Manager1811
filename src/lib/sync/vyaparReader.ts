@@ -246,7 +246,19 @@ export function readTransactions(db: Database.Database, lineItemTotalsByInvoice:
       const externalId = String(r[col.externalId]);
       const cashAmount = col.cashAmount ? toNumber(r[col.cashAmount]) : 0;
       const lineItemTotal = lineItemTotalsByInvoice.get(externalId);
-      const total = lineItemTotal && lineItemTotal > 0 ? lineItemTotal : cashAmount;
+      const rawTypeCode = toStringOrNull(r[col.typeCode])?.toLowerCase() ?? "";
+      const mappedType = TXN_TYPE_MAP[rawTypeCode] ?? "OTHER";
+      const balanceColumnValue = col.balanceAmount ? toNumber(r[col.balanceAmount]) : 0;
+      // An opening balance has no line items and no cash movement - the
+      // amount owed sits in the balance column alone. Without this it would
+      // resolve to 0 and the debt would be invisible, which is exactly what
+      // happened to 20 parties whose entire balance predates this backup.
+      const total =
+        mappedType === "OPENING_BALANCE"
+          ? balanceColumnValue
+          : lineItemTotal && lineItemTotal > 0
+            ? lineItemTotal
+            : cashAmount;
       // IMPORTANT (verified against real data): txn_balance_amount does
       // NOT get reduced when a payment is linked to this invoice in
       // Vyapar's kb_txn_links table - it stays at the invoice's original
@@ -257,12 +269,11 @@ export function readTransactions(db: Database.Database, lineItemTotalsByInvoice:
       // raised. Whether the customer currently owes anything, and how
       // much, comes from Customer.currentBalance (Vyapar's own per-party
       // running balance, kb_names.amount) instead - see src/lib/metrics.ts.
-      const balance = col.balanceAmount ? toNumber(r[col.balanceAmount]) : total;
-      const rawType = toStringOrNull(r[col.typeCode])?.toLowerCase() ?? "";
+      const balance = col.balanceAmount ? balanceColumnValue : total;
       return {
         externalId,
         customerExternalId: String(r[col.customerExternalId]),
-        type: TXN_TYPE_MAP[rawType] ?? "OTHER",
+        type: mappedType,
         invoiceNumber: col.invoiceNumber ? toStringOrNull(r[col.invoiceNumber]) : null,
         invoiceDate: toDate(r[col.invoiceDate]) ?? new Date(),
         dueDate: col.dueDate ? toDate(r[col.dueDate]) : null,

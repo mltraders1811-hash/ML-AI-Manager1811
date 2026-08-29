@@ -31,6 +31,9 @@ export type OverdueInvoice = {
   dateIso: string;
   dueDate: string; // DD/MM/YYYY
   invoiceNumber: string | null;
+  /** True for a "Receivable opening balance" carried over from before this
+   * backup's invoice history, rather than a bill raised in it. */
+  isOpeningBalance: boolean;
   amount: number; // the invoice's own total
   unpaid: number; // how much of the party's balance this invoice accounts for
   daysOverdue: number; // days past the due date
@@ -87,7 +90,11 @@ function daysBetween(later: Date, earlier: Date): number {
 export function renderReminder(template: string, c: OverdueCustomerDetail): string {
   const lines = c.invoices
     .filter((i) => i.isOverdue)
-    .map((i) => `• ${i.date} — ₹${formatInr(i.unpaid)} (${i.daysSince} din)`)
+    .map((i) =>
+      i.isOpeningBalance
+        ? `• Purana baki — ₹${formatInr(i.unpaid)} (${i.daysSince} din)`
+        : `• ${i.date} — ₹${formatInr(i.unpaid)} (${i.daysSince} din)`,
+    )
     .join("\n");
 
   const values: Record<string, string> = {
@@ -147,9 +154,12 @@ export async function getOverdueCustomers(
     where: { companyId },
     include: {
       invoices: {
-        where: { type: "SALE" },
+        // Opening balances are debt too - for 20 parties here it's their
+        // ENTIRE balance, and leaving them out left those customers marked
+        // overdue with no bills behind it and an empty reminder message.
+        where: { type: { in: ["SALE", "OPENING_BALANCE"] } },
         orderBy: { invoiceDate: "desc" },
-        select: { id: true, invoiceDate: true, invoiceNumber: true, totalAmount: true },
+        select: { id: true, invoiceDate: true, invoiceNumber: true, totalAmount: true, type: true },
       },
     },
   });
@@ -199,6 +209,7 @@ export async function getOverdueCustomers(
         dateIso: toIso(inv.invoiceDate),
         dueDate: toDdMmYyyy(due),
         invoiceNumber: inv.invoiceNumber,
+        isOpeningBalance: inv.type === "OPENING_BALANCE",
         amount: total,
         unpaid: Math.round(unpaid * 100) / 100,
         daysOverdue,

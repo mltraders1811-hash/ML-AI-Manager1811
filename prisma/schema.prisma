@@ -111,6 +111,11 @@ enum InvoiceType {
   PURCHASE_RETURN
   PAYMENT_IN
   PAYMENT_OUT
+  // Vyapar's "Receivable opening balance" (txn_type 5): what a party already
+  // owed when the books were opened, before any invoice in this backup. One
+  // per party, dated the start of the financial year. Counts as receivable
+  // debt like a sale does - see getOverdueCustomers in src/lib/overdue.ts.
+  OPENING_BALANCE
   OTHER
 }
 

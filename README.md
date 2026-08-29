@@ -109,6 +109,13 @@ column names:
   most invoices.
 - `kb_lineitems` has no item-name column at all, only `item_id`; the name
   lives on `kb_items.item_name` and has to be joined in.
+- **`txn_type` 5 is a "Receivable opening balance"**, confirmed by Vyapar's
+  own `txn_description`: one row per party, all dated the first day of the
+  financial year, carrying what that party already owed before any invoice in
+  the backup. Its amount lives in `txn_balance_amount` alone (no line items,
+  no cash), so a reader looking only at those two would record it as zero -
+  which hid 20 parties' entire debt. Type 6 is the supplier-side twin
+  ("Payable opening balance"), unused here; 65 is a rare sale variant.
 - **A transaction's own `txn_balance_amount` does not track payments made
   against it.** Vyapar links a payment to a specific invoice in a separate
   table (`kb_txn_links`), but never updates that invoice's own balance field

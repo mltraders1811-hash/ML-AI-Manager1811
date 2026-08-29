@@ -26,6 +26,7 @@ export type NormalizedInvoiceType =
   | "PURCHASE_RETURN"
   | "PAYMENT_IN"
   | "PAYMENT_OUT"
+  | "OPENING_BALANCE"
   | "OTHER";
 
 export type NormalizedInvoice = {
