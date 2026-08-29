@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getIstTodayRange } from "@/lib/dateIst";
+import { getIstTodayRange, istStartOfDay } from "@/lib/dateIst";
 import { formatInr } from "@/lib/format";
 
 export const DEFAULT_REMINDER_TEMPLATE = [
@@ -55,6 +55,14 @@ export type OverdueCustomerDetail = {
   creditDaysCustom: boolean;
   invoices: OverdueInvoice[];
   reminderMessage: string;
+  /** Follow-up state, so the list shows who has already been chased. */
+  lastReminderAt: string | null;
+  daysSinceReminder: number | null;
+  reminderCount: number;
+  /** How much they have paid off since that reminder was sent. Negative
+   * means they bought more on credit rather than paying. Null when they've
+   * never been reminded. */
+  paidSinceReminder: number | null;
 };
 
 export type OverdueResult = {
@@ -153,6 +161,10 @@ export async function getOverdueCustomers(
   const customers = await prisma.customer.findMany({
     where: { companyId },
     include: {
+      // Only the latest reminder is needed for the list; the full history
+      // is fetched per customer when the row is expanded.
+      reminders: { orderBy: { sentAt: "desc" }, take: 1 },
+      _count: { select: { reminders: true } },
       invoices: {
         // Opening balances are debt too - for 20 parties here it's their
         // ENTIRE balance, and leaving them out left those customers marked
@@ -228,6 +240,7 @@ export async function getOverdueCustomers(
     if (overdueAmount <= 0.9) continue;
     totalOverdue += overdueAmount;
 
+    const lastReminder = cust.reminders[0] ?? null;
     const detail: OverdueCustomerDetail = {
       customerId: cust.id,
       party: cust.name,
@@ -242,6 +255,14 @@ export async function getOverdueCustomers(
       creditDaysCustom: creditDaysOverride === undefined && cust.creditDays !== null,
       invoices,
       reminderMessage: "",
+      lastReminderAt: lastReminder ? lastReminder.sentAt.toISOString() : null,
+      // Calendar days, not elapsed hours: a reminder sent on Monday
+      // afternoon is "2 din ago" on Wednesday morning, not "1".
+      daysSinceReminder: lastReminder ? daysBetween(todayStart, istStartOfDay(lastReminder.sentAt)) : null,
+      reminderCount: cust._count.reminders,
+      paidSinceReminder: lastReminder
+        ? Math.round((lastReminder.balanceAtSend.toNumber() - balance) * 100) / 100
+        : null,
     };
     detail.reminderMessage = renderReminder(settings.reminderTemplate, detail);
     result.push(detail);

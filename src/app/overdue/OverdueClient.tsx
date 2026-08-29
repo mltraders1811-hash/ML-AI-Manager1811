@@ -33,6 +33,18 @@ type OverdueCustomer = {
   invoices: OverdueInvoice[];
   reminderMessage: string;
   whatsappLink: string | null;
+  lastReminderAt: string | null;
+  daysSinceReminder: number | null;
+  reminderCount: number;
+  paidSinceReminder: number | null;
+};
+
+type ReminderRecord = {
+  id: string;
+  sentAt: string;
+  balanceAtSend: number;
+  overdueAtSend: number;
+  daysOverdueAtSend: number;
 };
 
 type OverdueResponse = {
@@ -51,7 +63,41 @@ const CREDIT_DAY_CHIPS = [
   { label: "30 din", value: 30 },
 ];
 
-type SortKey = "days" | "amount";
+type SortKey = "days" | "amount" | "unchased";
+
+/** A one-line answer to "have I already chased this one, and did it work?" */
+function ReminderStatus({ customer }: { customer: OverdueCustomer }) {
+  if (customer.daysSinceReminder === null) {
+    return <p className="mt-0.5 text-xs text-neutral-400">Not reminded yet</p>;
+  }
+
+  const when =
+    customer.daysSinceReminder === 0
+      ? "today"
+      : customer.daysSinceReminder === 1
+        ? "yesterday"
+        : `${customer.daysSinceReminder} din ago`;
+
+  // A meaningful payment since the last reminder is the signal that chasing
+  // worked; keep the threshold above rounding noise.
+  const paid = customer.paidSinceReminder ?? 0;
+  if (paid > 1) {
+    return (
+      <p className="mt-0.5 text-xs text-green-700">
+        Reminded {when} · paid ₹{formatInr(paid)} since
+      </p>
+    );
+  }
+
+  const stale = customer.daysSinceReminder >= 7;
+  return (
+    <p className={`mt-0.5 text-xs ${stale ? "text-amber-700" : "text-neutral-500"}`}>
+      Reminded {when}
+      {customer.reminderCount > 1 ? ` · ${customer.reminderCount} times` : ""}
+      {paid <= 1 ? " · no payment since" : ""}
+    </p>
+  );
+}
 
 export function OverdueClient() {
   const [data, setData] = useState<OverdueResponse | null>(null);
@@ -63,6 +109,18 @@ export function OverdueClient() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [phoneEdits, setPhoneEdits] = useState<Record<string, string>>({});
   const [savingPhone, setSavingPhone] = useState<string | null>(null);
+  const [history, setHistory] = useState<Record<string, ReminderRecord[]>>({});
+
+  async function loadHistory(customerId: string) {
+    if (history[customerId]) return; // already fetched
+    try {
+      const res = await fetch(`/api/reminders?customerId=${customerId}`);
+      const body = await res.json();
+      setHistory((h) => ({ ...h, [customerId]: body.reminders ?? [] }));
+    } catch {
+      setHistory((h) => ({ ...h, [customerId]: [] }));
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -93,12 +151,51 @@ export function OverdueClient() {
     if (!data) return [];
     const q = query.trim().toLowerCase();
     const filtered = q ? data.customers.filter((c) => c.party.toLowerCase().includes(q)) : data.customers;
-    return [...filtered].sort((a, b) =>
-      sortKey === "amount"
-        ? b.overdueAmount - a.overdueAmount
-        : b.maxDaysOverdue - a.maxDaysOverdue || b.overdueAmount - a.overdueAmount,
-    );
+    return [...filtered].sort((a, b) => {
+      if (sortKey === "amount") return b.overdueAmount - a.overdueAmount;
+      if (sortKey === "unchased") {
+        // Never-reminded first, then longest since the last reminder - the
+        // order to work through if you're chasing people this morning.
+        const aDays = a.daysSinceReminder ?? Number.MAX_SAFE_INTEGER;
+        const bDays = b.daysSinceReminder ?? Number.MAX_SAFE_INTEGER;
+        return bDays - aDays || b.overdueAmount - a.overdueAmount;
+      }
+      return b.maxDaysOverdue - a.maxDaysOverdue || b.overdueAmount - a.overdueAmount;
+    });
   }, [data, query, sortKey]);
+
+  async function logReminder(customerId: string) {
+    try {
+      await fetch("/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId }),
+      });
+      // Reflect it immediately rather than making the owner reload to see
+      // that the row has been chased.
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              customers: d.customers.map((c) =>
+                c.customerId === customerId
+                  ? {
+                      ...c,
+                      lastReminderAt: new Date().toISOString(),
+                      daysSinceReminder: 0,
+                      reminderCount: c.reminderCount + 1,
+                      paidSinceReminder: 0,
+                    }
+                  : c,
+              ),
+            }
+          : d,
+      );
+    } catch {
+      // Not worth interrupting the send over - the message still went out,
+      // and the history is a convenience rather than a record of record.
+    }
+  }
 
   async function savePhone(customerId: string) {
     const phone = (phoneEdits[customerId] ?? "").trim();
@@ -215,6 +312,15 @@ export function OverdueClient() {
             >
               By amount
             </button>
+            <button
+              onClick={() => setSortKey("unchased")}
+              title="Never reminded first, then whoever was chased longest ago"
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                sortKey === "unchased" ? "border-brand text-brand" : "border-neutral-300 text-neutral-600 hover:bg-neutral-100"
+              }`}
+            >
+              Not chased
+            </button>
           </div>
         </div>
       </section>
@@ -243,6 +349,7 @@ export function OverdueClient() {
                     {c.invoiceCount} bill{c.invoiceCount === 1 ? "" : "s"} · {c.maxDaysOverdue} din overdue ·{" "}
                     {c.creditDays} din credit{c.creditDaysCustom ? " (custom)" : ""}
                   </p>
+                  <ReminderStatus customer={c} />
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="font-bold text-overdue">₹{formatInr(c.overdueAmount)}</p>
@@ -290,6 +397,28 @@ export function OverdueClient() {
                     </table>
                   </div>
 
+                  {c.reminderCount > 0 ? (
+                    <details className="mb-3" onToggle={(e) => e.currentTarget.open && loadHistory(c.customerId)}>
+                      <summary className="cursor-pointer text-xs font-semibold text-neutral-600">
+                        Reminder history ({c.reminderCount})
+                      </summary>
+                      <div className="mt-2 rounded-lg border border-neutral-200 bg-white p-3">
+                        {history[c.customerId] === undefined ? (
+                          <p className="text-xs text-neutral-400">Loading…</p>
+                        ) : (
+                          <ul className="space-y-1 text-xs text-neutral-600">
+                            {history[c.customerId]!.map((h) => (
+                              <li key={h.id}>
+                                {new Date(h.sentAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}{" "}
+                                — owed ₹{formatInr(h.balanceAtSend)} ({h.daysOverdueAtSend} din overdue)
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </details>
+                  ) : null}
+
                   <details className="mb-3">
                     <summary className="cursor-pointer text-xs font-semibold text-neutral-600">
                       Preview reminder message
@@ -304,6 +433,10 @@ export function OverdueClient() {
                       href={c.whatsappLink}
                       target="_blank"
                       rel="noopener noreferrer"
+                      // Log the send as the tab opens. Deliberately not
+                      // awaited: WhatsApp must open in the same user gesture
+                      // or the browser blocks it as a popup.
+                      onClick={() => void logReminder(c.customerId)}
                       className="inline-flex items-center rounded-lg bg-[#25D366] px-4 py-2 text-xs font-semibold text-white transition hover:opacity-90"
                     >
                       Send WhatsApp reminder

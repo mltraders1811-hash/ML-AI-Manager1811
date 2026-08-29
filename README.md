@@ -30,6 +30,13 @@ reminder built from your own template (edited at `/settings/overdue`, with
 `{balance}` and `{credit_days}` placeholders). Search, sort and credit-period
 chips narrow the list.
 
+Sending a reminder is recorded, so each row says whether that party has
+already been chased and how recently - and, by comparing what they owed then
+against what they owe now, whether the reminder actually worked ("paid
+₹5,000 since" vs "no payment since"). A **Not chased** sort puts the
+never-reminded first, then whoever was chased longest ago, which is the order
+to work through. Expanding a row shows the full history.
+
 Credit terms are per customer (`/customers`), falling back to a company-wide
 default. The phone book is also where you fill in missing phone numbers -
 Vyapar has none for most parties, and a reminder can't be sent without one.

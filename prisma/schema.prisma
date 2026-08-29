@@ -29,6 +29,7 @@ model Company {
 
   overdueSettings       OverdueSettings?
   invoiceDesignSettings InvoiceDesignSettings?
+  reminderLogs          ReminderLog[]
 }
 
 model Customer {
@@ -64,8 +65,9 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company  Company   @relation(fields: [companyId], references: [id])
-  invoices Invoice[]
+  company   Company       @relation(fields: [companyId], references: [id])
+  invoices  Invoice[]
+  reminders ReminderLog[]
 
   @@unique([companyId, externalId])
   @@index([companyId, name])
@@ -89,6 +91,31 @@ model InvoiceDesignSettings {
   updatedAt DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id])
+}
+
+// One row each time a WhatsApp reminder is sent, so the overdue screen can
+// show who has already been chased and how recently. Without it the list
+// says nothing about follow-up, and the same party gets messaged twice in a
+// morning while another is quietly forgotten.
+//
+// balanceAtSend records what they owed at the time: comparing it to what
+// they owe now is what tells you whether the reminder actually worked.
+model ReminderLog {
+  id        String @id @default(uuid())
+  companyId String
+
+  customerId String
+  sentAt     DateTime @default(now())
+
+  balanceAtSend  Decimal @db.Decimal(14, 2)
+  overdueAtSend  Decimal @db.Decimal(14, 2)
+  daysOverdueAtSend Int
+
+  company  Company  @relation(fields: [companyId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, customerId, sentAt])
+  @@index([companyId, sentAt])
 }
 
 // Company-wide collections settings: the fallback credit period and the
