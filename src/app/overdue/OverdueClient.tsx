@@ -47,9 +47,18 @@ type ReminderRecord = {
   daysOverdueAtSend: number;
 };
 
+type AgingBucket = {
+  label: string;
+  minDays: number;
+  maxDays: number | null;
+  amount: number;
+  customerCount: number;
+};
+
 type OverdueResponse = {
   creditDays: number;
   summary: { customerCount: number; totalOverdue: number; totalOutstanding: number };
+  aging: AgingBucket[];
   customers: OverdueCustomer[];
 };
 
@@ -110,6 +119,7 @@ export function OverdueClient() {
   const [phoneEdits, setPhoneEdits] = useState<Record<string, string>>({});
   const [savingPhone, setSavingPhone] = useState<string | null>(null);
   const [history, setHistory] = useState<Record<string, ReminderRecord[]>>({});
+  const [agingFilter, setAgingFilter] = useState<AgingBucket | null>(null);
 
   async function loadHistory(customerId: string) {
     if (history[customerId]) return; // already fetched
@@ -150,7 +160,18 @@ export function OverdueClient() {
   const visible = useMemo(() => {
     if (!data) return [];
     const q = query.trim().toLowerCase();
-    const filtered = q ? data.customers.filter((c) => c.party.toLowerCase().includes(q)) : data.customers;
+    let filtered = q ? data.customers.filter((c) => c.party.toLowerCase().includes(q)) : data.customers;
+    if (agingFilter) {
+      // Keep anyone with at least one overdue bill inside the band.
+      filtered = filtered.filter((c) =>
+        c.invoices.some(
+          (i) =>
+            i.isOverdue &&
+            i.daysOverdue >= agingFilter.minDays &&
+            (agingFilter.maxDays === null || i.daysOverdue <= agingFilter.maxDays),
+        ),
+      );
+    }
     return [...filtered].sort((a, b) => {
       if (sortKey === "amount") return b.overdueAmount - a.overdueAmount;
       if (sortKey === "unchased") {
@@ -162,7 +183,7 @@ export function OverdueClient() {
       }
       return b.maxDaysOverdue - a.maxDaysOverdue || b.overdueAmount - a.overdueAmount;
     });
-  }, [data, query, sortKey]);
+  }, [data, query, sortKey, agingFilter]);
 
   async function logReminder(customerId: string) {
     try {
@@ -257,6 +278,49 @@ export function OverdueClient() {
             <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Total Baki</p>
             <p className="mt-1 text-xl font-bold text-neutral-900">₹{formatInr(data.summary.totalOutstanding)}</p>
           </div>
+        </section>
+      ) : null}
+
+      {data && data.aging.some((b) => b.amount > 0) ? (
+        <section className="mb-6">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            How old the money is
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {data.aging.map((b) => {
+              const active = agingFilter?.label === b.label;
+              // Older money is worse money - shade accordingly.
+              const tone =
+                b.minDays >= 91
+                  ? "text-red-700"
+                  : b.minDays >= 61
+                    ? "text-orange-700"
+                    : b.minDays >= 31
+                      ? "text-amber-700"
+                      : "text-neutral-700";
+              return (
+                <button
+                  key={b.label}
+                  onClick={() => setAgingFilter(active ? null : b)}
+                  disabled={b.amount === 0}
+                  className={`rounded-2xl border p-3 text-left transition disabled:opacity-40 ${
+                    active ? "border-brand bg-brand/5" : "border-neutral-200 bg-white hover:bg-neutral-50"
+                  }`}
+                >
+                  <p className="text-xs font-semibold text-neutral-500">{b.label}</p>
+                  <p className={`mt-1 text-lg font-bold ${tone}`}>₹{formatInr(b.amount)}</p>
+                  <p className="text-xs text-neutral-400">
+                    {b.customerCount} customer{b.customerCount === 1 ? "" : "s"}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+          {agingFilter ? (
+            <button onClick={() => setAgingFilter(null)} className="mt-2 text-xs font-semibold text-brand">
+              Showing {agingFilter.label} only — clear filter
+            </button>
+          ) : null}
         </section>
       ) : null}
 

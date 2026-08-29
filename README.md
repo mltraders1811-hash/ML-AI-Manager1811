@@ -30,6 +30,14 @@ reminder built from your own template (edited at `/settings/overdue`, with
 `{balance}` and `{credit_days}` placeholders). Search, sort and credit-period
 chips narrow the list.
 
+An ageing strip splits the overdue money into 1-30 / 31-60 / 61-90 / 90+ day
+bands, each clickable to filter the list. Bills are banded by their own age
+rather than the customer's worst one, so a party with one ancient invoice and
+several recent ones shows up in several bands instead of overstating how
+stuck the book is. The bands always sum to the overdue total - debt that ties
+to no bill anywhere in the backup necessarily predates the invoice history,
+so it lands in the oldest band rather than being dropped.
+
 Sending a reminder is recorded, so each row says whether that party has
 already been chased and how recently - and, by comparing what they owed then
 against what they owe now, whether the reminder actually worked ("paid

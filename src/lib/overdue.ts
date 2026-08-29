@@ -65,13 +65,85 @@ export type OverdueCustomerDetail = {
   paidSinceReminder: number | null;
 };
 
+/** Standard receivables ageing. Bucketed by how far past its due date the
+ * money is, so the shape of the book is visible at a glance - a lakh spread
+ * across recent bills is a different problem from a lakh sitting past 90
+ * days. `maxDays: null` is the open-ended oldest bucket. */
+export type AgingBucket = {
+  label: string;
+  minDays: number;
+  maxDays: number | null;
+  amount: number;
+  customerCount: number;
+};
+
 export type OverdueResult = {
   creditDays: number;
   asOf: string;
   reminderTemplate: string;
   summary: { customerCount: number; totalOverdue: number; totalOutstanding: number };
+  aging: AgingBucket[];
   customers: OverdueCustomerDetail[];
 };
+
+const AGING_BANDS: { label: string; minDays: number; maxDays: number | null }[] = [
+  { label: "1-30 din", minDays: 1, maxDays: 30 },
+  { label: "31-60 din", minDays: 31, maxDays: 60 },
+  { label: "61-90 din", minDays: 61, maxDays: 90 },
+  { label: "90+ din", minDays: 91, maxDays: null },
+];
+
+function bandIndexFor(daysOverdue: number): number {
+  const i = AGING_BANDS.findIndex(
+    (b) => daysOverdue >= b.minDays && (b.maxDays === null || daysOverdue <= b.maxDays),
+  );
+  // Anything that matches no band is debt we could not date at all - it ties
+  // to no bill anywhere in the backup, so it necessarily predates the whole
+  // invoice history. The oldest band is the honest place for it, and it must
+  // land somewhere: a total that doesn't reconcile is worse than useless.
+  return i === -1 ? AGING_BANDS.length - 1 : i;
+}
+
+/**
+ * Buckets each overdue bill by its own age, not the customer's worst bill -
+ * a party with one ancient invoice and several recent ones has money in
+ * several bands, and rolling it all into the oldest would overstate how
+ * stuck the book is.
+ *
+ * Written so every rupee of overdueAmount is assigned exactly once: the
+ * buckets always sum to summary.totalOverdue, which is the property that
+ * makes the split trustworthy (and is asserted in tests/aging.test.ts).
+ */
+function buildAging(customers: OverdueCustomerDetail[]): AgingBucket[] {
+  const amounts = AGING_BANDS.map(() => 0);
+  const parties = AGING_BANDS.map(() => new Set<string>());
+
+  for (const c of customers) {
+    let attributed = 0;
+    for (const inv of c.invoices) {
+      if (!inv.isOverdue) continue;
+      const i = bandIndexFor(inv.daysOverdue);
+      amounts[i]! += inv.unpaid;
+      parties[i]!.add(c.customerId);
+      attributed += inv.unpaid;
+    }
+
+    const undated = c.overdueAmount - attributed;
+    if (undated > 0.009) {
+      const i = bandIndexFor(c.maxDaysOverdue);
+      amounts[i]! += undated;
+      parties[i]!.add(c.customerId);
+    }
+  }
+
+  return AGING_BANDS.map((band, i) => ({
+    label: band.label,
+    minDays: band.minDays,
+    maxDays: band.maxDays,
+    amount: Math.round(amounts[i]! * 100) / 100,
+    customerCount: parties[i]!.size,
+  }));
+}
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -279,6 +351,7 @@ export async function getOverdueCustomers(
       totalOverdue: Math.round(totalOverdue * 100) / 100,
       totalOutstanding: Math.round(totalOutstanding * 100) / 100,
     },
+    aging: buildAging(result),
     customers: result,
   };
 }
