@@ -27,7 +27,8 @@ model Company {
   brokerageReports  BrokerageReport[]
   brokeragePayments BrokeragePayment[]
 
-  overdueSettings OverdueSettings?
+  overdueSettings       OverdueSettings?
+  invoiceDesignSettings InvoiceDesignSettings?
 }
 
 model Customer {
@@ -68,6 +69,26 @@ model Customer {
 
   @@unique([companyId, externalId])
   @@index([companyId, name])
+}
+
+// Look and wording of the generated invoice PDF. One row per company;
+// absent means "use the built-in defaults" (see src/lib/invoicePdf.ts).
+model InvoiceDesignSettings {
+  companyId String @id
+
+  businessName String
+  addressLine  String?
+  phone        String?
+  gstin        String?
+  // Hex colour used for the header band and table headings.
+  accentColor String @default("#2B5336")
+  // Free text printed at the bottom of every invoice (terms, thanks, etc).
+  footerNote String?
+  showLineItems Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
 }
 
 // Company-wide collections settings: the fallback credit period and the

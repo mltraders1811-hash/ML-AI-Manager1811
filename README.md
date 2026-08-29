@@ -21,6 +21,34 @@ SQLite database (unencrypted). Once a day, a scheduled job:
 The Next.js app reads from that Postgres database to power the dashboard,
 WhatsApp reminder links, and the AI chat assistant.
 
+## Collections (`/overdue`, `/customers`)
+
+`/overdue` lists who owes money, oldest bills first. Each customer expands to
+show their unpaid bills with dates, due dates and days overdue, and a WhatsApp
+reminder built from your own template (edited at `/settings/overdue`, with
+`{party}`, `{amount}`, `{days}`, `{invoice_count}`, `{invoice_lines}`,
+`{balance}` and `{credit_days}` placeholders). Search, sort and credit-period
+chips narrow the list.
+
+Credit terms are per customer (`/customers`), falling back to a company-wide
+default. The phone book is also where you fill in missing phone numbers -
+Vyapar has none for most parties, and a reminder can't be sent without one.
+Names and balances there are read-only since the sync overwrites them nightly;
+phone, note and credit days are yours and survive every sync.
+
+How the overdue amount is derived: the customer's authoritative balance
+(`Customer.currentBalance`) is spread back across their invoices newest-first,
+so each bill gets an "unpaid" figure that carries an age while the per-invoice
+amounts still sum exactly to the balance. Any balance older than the backup's
+invoice history is counted as overdue rather than dropped.
+
+## Invoices (`/invoices`)
+
+Browse sales by day, or search by party name or bill number, and open any
+invoice for its line items. Each one can be exported as a branded PDF, styled
+at `/settings/invoice-design` (business name, address, phone, GSTIN, accent
+colour, footer note, and whether to print the item table).
+
 ## Brokerage tracking (`/brokerage`)
 
 A second, unrelated feature: split sales broker-wise, compute 0.5% commission

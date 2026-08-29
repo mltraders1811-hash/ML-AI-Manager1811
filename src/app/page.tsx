@@ -47,6 +47,9 @@ export default async function DashboardPage() {
           <Link href="/overdue" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
             Overdue
           </Link>
+          <Link href="/invoices" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
+            Invoices
+          </Link>
           <Link href="/customers" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
             Customers
           </Link>
