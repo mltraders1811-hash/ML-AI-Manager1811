@@ -13,6 +13,10 @@ export type NormalizedCustomer = {
   // introduced/handles a customer. Null if ungrouped or the group table
   // isn't present. See src/lib/sync/brokerageFromVyapar.ts.
   partyGroupName: string | null;
+  // kb_names.amount - Vyapar's own running balance for this party. Trusted
+  // as-is; see the comment on Customer.currentBalance in schema.prisma for
+  // why invoice-level balances can't be used instead.
+  currentBalance: number;
 };
 
 export type NormalizedInvoiceType =

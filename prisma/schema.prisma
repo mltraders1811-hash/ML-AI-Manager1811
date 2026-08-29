@@ -41,6 +41,16 @@ model Customer {
   email   String?
   address String?
 
+  // Vyapar's own running balance for this party (kb_names.amount), synced
+  // as-is rather than derived from our own invoice/payment records. Vyapar
+  // links payments to specific invoices in a separate table and never
+  // updates the invoice's own balance field to reflect it, so summing
+  // Invoice.balanceAmount silently overstates debt (verified against real
+  // data: 10-27x too high per customer). This field is Vyapar's own
+  // already-correct total and is what Total Outstanding/Overdue are
+  // computed from - see src/lib/metrics.ts.
+  currentBalance Decimal @default(0) @db.Decimal(14, 2)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

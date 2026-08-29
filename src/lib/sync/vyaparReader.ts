@@ -137,6 +137,7 @@ export function readCustomers(db: Database.Database): NormalizedCustomer[] {
     email: resolveColumn(columns, CUSTOMER_FIELD_CANDIDATES.email, "email", table, false),
     address: resolveColumn(columns, CUSTOMER_FIELD_CANDIDATES.address, "address", table, false),
     groupId: resolveColumn(columns, CUSTOMER_FIELD_CANDIDATES.groupId, "groupId", table, false),
+    currentBalance: resolveColumn(columns, CUSTOMER_FIELD_CANDIDATES.currentBalance, "currentBalance", table, false),
   };
   const partyGroups = readPartyGroups(db);
 
@@ -154,6 +155,7 @@ export function readCustomers(db: Database.Database): NormalizedCustomer[] {
         email: col.email ? toStringOrNull(r[col.email]) : null,
         address: col.address ? toStringOrNull(r[col.address]) : null,
         partyGroupName,
+        currentBalance: col.currentBalance ? toNumber(r[col.currentBalance]) : 0,
       };
     });
 }
@@ -245,10 +247,16 @@ export function readTransactions(db: Database.Database, lineItemTotalsByInvoice:
       const cashAmount = col.cashAmount ? toNumber(r[col.cashAmount]) : 0;
       const lineItemTotal = lineItemTotalsByInvoice.get(externalId);
       const total = lineItemTotal && lineItemTotal > 0 ? lineItemTotal : cashAmount;
-      // txn_balance_amount is what Vyapar itself considers still
-      // outstanding on this transaction (already accounts for any linked
-      // payments) - if we can't find it, assume unpaid rather than
-      // silently assuming everything is settled.
+      // IMPORTANT (verified against real data): txn_balance_amount does
+      // NOT get reduced when a payment is linked to this invoice in
+      // Vyapar's kb_txn_links table - it stays at the invoice's original
+      // amount forever, even for fully-paid invoices. So this field (and
+      // the paidAmount/balanceAmount derived from it below) is NOT a
+      // reliable "how much of this specific invoice is still owed" -
+      // that's a real, if imprecise, record of the invoice as originally
+      // raised. Whether the customer currently owes anything, and how
+      // much, comes from Customer.currentBalance (Vyapar's own per-party
+      // running balance, kb_names.amount) instead - see src/lib/metrics.ts.
       const balance = col.balanceAmount ? toNumber(r[col.balanceAmount]) : total;
       const rawType = toStringOrNull(r[col.typeCode])?.toLowerCase() ?? "";
       return {

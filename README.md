@@ -81,6 +81,23 @@ column names:
   most invoices.
 - `kb_lineitems` has no item-name column at all, only `item_id`; the name
   lives on `kb_items.item_name` and has to be joined in.
+- **A transaction's own `txn_balance_amount` does not track payments made
+  against it.** Vyapar links a payment to a specific invoice in a separate
+  table (`kb_txn_links`), but never updates that invoice's own balance field
+  to reflect it - it stays at the invoice's original amount forever, even
+  once fully paid. Summing `Invoice.balanceAmount` therefore overstates a
+  customer's real debt (verified against real data: 10-27x too high per
+  customer, ~10x in aggregate). The number that's actually correct - and
+  matches what Vyapar's own app shows - is `kb_names.amount`, a running
+  balance Vyapar maintains per party. The dashboard's Total
+  Outstanding/Overdue figures and the AI chat's balance lookups are computed
+  from `Customer.currentBalance` (synced from `kb_names.amount`), not from
+  summing invoices - see the comment on that field in `prisma/schema.prisma`
+  and on `getOverdueCustomers` in `src/lib/metrics.ts`. Invoice-level
+  balances are still synced and kept (useful as a record of each invoice as
+  originally raised, and their due dates still drive which customers count
+  as "overdue" and since when), but should not be read as "amount still
+  owed on this invoice."
 
 If your Vyapar schema differs (e.g. a different app version), run:
 

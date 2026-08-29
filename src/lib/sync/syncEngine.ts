@@ -67,8 +67,16 @@ export async function persistExtract(
     try {
       const row = await prisma.customer.upsert({
         where: { companyId_externalId: { companyId, externalId: c.externalId } },
-        update: { name: c.name, phone: c.phone, email: c.email, address: c.address },
-        create: { companyId, externalId: c.externalId, name: c.name, phone: c.phone, email: c.email, address: c.address },
+        update: { name: c.name, phone: c.phone, email: c.email, address: c.address, currentBalance: c.currentBalance },
+        create: {
+          companyId,
+          externalId: c.externalId,
+          name: c.name,
+          phone: c.phone,
+          email: c.email,
+          address: c.address,
+          currentBalance: c.currentBalance,
+        },
       });
       customerIdByExternalId.set(c.externalId, row.id);
       customersUpserted++;

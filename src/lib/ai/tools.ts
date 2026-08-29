@@ -110,20 +110,24 @@ export async function executeTool(companyId: string, name: string, input: Record
       });
       if (customers.length === 0) return { error: `No customer found matching "${name}"` };
 
+      const { tomorrowStart } = getIstTodayRange();
       const results = await Promise.all(
         customers.map(async (customer) => {
-          const invoices = await prisma.invoice.findMany({
-            where: { companyId, customerId: customer.id, type: "SALE", balanceAmount: { gt: 0 } },
-            orderBy: { dueDate: "asc" },
+          // Total owed comes from Customer.currentBalance (Vyapar's own
+          // per-party running balance) - see the note on that field in
+          // schema.prisma for why individual invoices' balanceAmount can't
+          // be trusted for this. Due dates are still used to say whether
+          // (and since when) this customer is overdue.
+          const totalOutstanding = customer.currentBalance.toNumber();
+          const overdueInvoiceCount = await prisma.invoice.count({
+            where: { companyId, customerId: customer.id, type: "SALE", dueDate: { lt: tomorrowStart } },
           });
-          const { tomorrowStart } = getIstTodayRange();
-          const overdueInvoices = invoices.filter((i) => i.dueDate && i.dueDate < tomorrowStart);
           return {
             name: customer.name,
             phone: customer.phone,
-            total_outstanding: invoices.reduce((sum, i) => sum + i.balanceAmount.toNumber(), 0),
-            overdue_amount: overdueInvoices.reduce((sum, i) => sum + i.balanceAmount.toNumber(), 0),
-            open_invoice_count: invoices.length,
+            total_outstanding: totalOutstanding,
+            overdue_amount: overdueInvoiceCount > 0 ? totalOutstanding : 0,
+            past_due_invoice_count: overdueInvoiceCount,
           };
         }),
       );

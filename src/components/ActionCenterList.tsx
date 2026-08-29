@@ -20,7 +20,7 @@ export function ActionCenterList({ customers }: { customers: OverdueCustomer[] }
             <div className="min-w-0">
               <p className="truncate font-semibold text-neutral-900">{c.name}</p>
               <p className="text-xs text-neutral-500">
-                {c.invoiceCount} invoice{c.invoiceCount > 1 ? "s" : ""} · overdue since {formatDateDDMMYYYY(c.oldestDueDate)} ({c.daysOverdue}d)
+                {c.invoiceCount} invoice{c.invoiceCount > 1 ? "s" : ""} on file · overdue since {formatDateDDMMYYYY(c.oldestDueDate)} ({c.daysOverdue}d)
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-3">

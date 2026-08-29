@@ -56,7 +56,7 @@ export default async function DashboardPage() {
         <MetricCard
           label="Overdue"
           value={`₹${formatInr(metrics.overdueAmount)}`}
-          sub={`${metrics.overdueCount} invoice${metrics.overdueCount === 1 ? "" : "s"}`}
+          sub={`${metrics.overdueCount} customer${metrics.overdueCount === 1 ? "" : "s"}`}
           tone="overdue"
         />
         <MetricCard label="Yesterday's Sales" value={`₹${formatInr(metrics.yesterdaySales)}`} />

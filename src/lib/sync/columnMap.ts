@@ -28,6 +28,10 @@ export const CUSTOMER_FIELD_CANDIDATES = {
   // Verified: kb_names.name_group_id -> kb_party_groups.party_group_id.
   // Used to detect broker-assigned customers - see brokerRules.ts.
   groupId: ["name_group_id", "group_id"],
+  // Verified: kb_names.amount is Vyapar's own maintained running balance
+  // for this party - already correct, unlike any invoice-level balance
+  // field (see the comment on Customer.currentBalance in schema.prisma).
+  currentBalance: ["amount", "balance", "current_balance"],
 };
 
 export const PARTY_GROUP_FIELD_CANDIDATES = {
