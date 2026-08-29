@@ -1,0 +1,51 @@
+name: Weekly data backup
+
+# Customers, invoices and inventory are rebuilt from Vyapar on every sync,
+# so they need no backup. Brokerage payments, uploaded reports, hand-entered
+# phone numbers and settings are not - they exist only in this database, on a
+# free-tier host, with no snapshots. This job keeps a copy.
+on:
+  schedule:
+    # 04:00 UTC Sunday = 09:30 IST, after that morning's sync.
+    - cron: "0 4 * * 0"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      - name: Export
+        run: npm run backup -- out/backup.json
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DEFAULT_COMPANY_ID: ${{ secrets.DEFAULT_COMPANY_ID }}
+
+      - name: Keep it
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_number }}
+          path: out/backup.json
+          # GitHub's maximum. Download one occasionally if you want a copy
+          # that outlives this window.
+          retention-days: 90
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          {
+            echo "### Weekly backup FAILED"
+            echo ""
+            echo "Brokerage payments, hand-entered phone numbers and settings are"
+            echo "currently unbacked-up. Check DATABASE_URL and DEFAULT_COMPANY_ID."
+          } >> "$GITHUB_STEP_SUMMARY"

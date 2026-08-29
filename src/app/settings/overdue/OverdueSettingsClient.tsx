@@ -122,6 +122,21 @@ export function OverdueSettingsClient() {
         {status ? <span className="text-sm text-neutral-500">{status}</span> : null}
         {error ? <span className="text-sm text-overdue">{error}</span> : null}
       </div>
+
+      <section className="mt-8 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-neutral-800">Backup your data</h2>
+        <p className="mt-1 text-xs text-neutral-500">
+          Customers, bills and stock come back automatically from Vyapar, so they need no backup. Your brokerage
+          payments, uploaded reports, hand-entered phone numbers and these settings do not — they live only in this
+          app. A copy is saved automatically every Sunday; this downloads one right now.
+        </p>
+        <a
+          href="/api/backup"
+          className="mt-3 inline-flex rounded-lg border border-neutral-300 px-4 py-2 text-xs font-semibold text-neutral-600 transition hover:bg-neutral-100"
+        >
+          Download backup
+        </a>
+      </section>
     </main>
   );
 }

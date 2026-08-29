@@ -233,6 +233,25 @@ see "How it works" above). To enable it:
 Without this token the button still shows but returns a clear "not set up
 yet" message instead of failing silently.
 
+## Backups
+
+Most of this database is disposable - customers, invoices, line items and
+inventory are rebuilt from Vyapar on every sync, so losing them costs a sync
+run. What isn't: brokerage payments, manually uploaded reports, the phone
+numbers and credit terms typed into the phone book, and the reminder and
+invoice-design settings. Those exist only here.
+
+`.github/workflows/backup.yml` exports them weekly and keeps the file as a
+build artifact (90 days, GitHub's maximum - download one occasionally for a
+copy that outlives that). `Download backup` on `/settings/overdue` produces
+the same file on demand. Customer edits are keyed by their Vyapar id rather
+than our own uuid, so a restore can re-attach them after a fresh sync
+recreates the rows.
+
+The export fails loudly on an empty result rather than quietly archiving an
+empty file every week, which is the failure mode that makes a backup worse
+than none.
+
 ## When the sync breaks
 
 The dashboard shows a banner when the figures can't be trusted to be current:

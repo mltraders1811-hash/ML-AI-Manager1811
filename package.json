@@ -19,7 +19,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "backup": "tsx scripts/export-backup.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
