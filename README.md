@@ -64,6 +64,22 @@ invoice for its line items. Each one can be exported as a branded PDF, styled
 at `/settings/invoice-design` (business name, address, phone, GSTIN, accent
 colour, footer note, and whether to print the item table).
 
+## Items (`/inventory`)
+
+What actually sold over the last 7/30/90 days, by item: quantity, revenue,
+and the rate genuinely achieved against the item's list rate, so consistent
+discounting is visible. Plus the item master with its rates.
+
+**No profit margins, deliberately.** Checked against the real backup: only 71
+of the 397 items actually sold carry a purchase rate in Vyapar - sales get
+entered, buying rates rarely do. A first version costed that 18% and reported
+an 82.9% margin on a grain wholesale business, because a missing cost reads
+as zero. Stock on hand is omitted for the same reason: `item_stock_quantity`
+is negative for 1,705 of 2,110 items (down to -15 lakh) because goods leave
+without purchases going in, so it isn't a stock figure. Fill in purchase
+rates in Vyapar and margins become computable; until then the app says so
+rather than publishing a confident wrong number.
+
 ## Brokerage tracking (`/brokerage`)
 
 A second, unrelated feature: split sales broker-wise, compute 0.5% commission
