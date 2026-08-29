@@ -233,6 +233,24 @@ see "How it works" above). To enable it:
 Without this token the button still shows but returns a clear "not set up
 yet" message instead of failing silently.
 
+## Tests
+
+```bash
+npm test
+```
+
+Needs a throwaway Postgres (point `DATABASE_URL` at one - never the real
+database, the suite truncates tables). `.github/workflows/ci.yml` runs the
+same thing on every push against a disposable service container.
+
+The tests build a **synthetic Vyapar backup** (`tests/fixtures/makeVyb.ts`)
+rather than using a real one, so they run anywhere and contain no customer
+data. That fixture deliberately reproduces every schema quirk documented
+above - credit sales with no cash amount, stale invoice balances, item names
+behind a join, an opening balance whose amount lives in the balance column -
+because each of those caused a real bug. Each assertion was checked by
+re-introducing the bug it guards and confirming the test goes red.
+
 ## Local development
 
 ```bash

@@ -1,0 +1,59 @@
+name: CI
+
+# Runs on every push and pull request. The dues figures on the dashboard
+# depend on a lot of subtle Vyapar-schema handling, so a red build here
+# means a number somewhere is about to be wrong.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mlam_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # A throwaway database in the service container above - never the real one.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mlam_test
+      DEFAULT_COMPANY_ID: "00000000-0000-0000-0000-000000000001"
+      # Dummy values: the tests exercise the sync and dues logic, which never
+      # reaches Drive, Anthropic, or the login flow.
+      ADMIN_USERNAME: ci
+      ADMIN_PASSWORD_HASH: "aa:bb"
+      SESSION_SECRET: "0123456789abcdef0123456789abcdef"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Create the test schema
+        run: npx prisma db push --accept-data-loss --skip-generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
