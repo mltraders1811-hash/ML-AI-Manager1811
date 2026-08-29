@@ -67,7 +67,17 @@ export async function persistExtract(
     try {
       const row = await prisma.customer.upsert({
         where: { companyId_externalId: { companyId, externalId: c.externalId } },
-        update: { name: c.name, phone: c.phone, email: c.email, address: c.address, currentBalance: c.currentBalance },
+        update: {
+          name: c.name,
+          // Only overwrite contact details when Vyapar actually has them.
+          // Numbers added by hand in the phone book (for parties Vyapar has
+          // no number for) must survive the next sync, which would otherwise
+          // blank them out every night.
+          ...(c.phone ? { phone: c.phone } : {}),
+          ...(c.email ? { email: c.email } : {}),
+          ...(c.address ? { address: c.address } : {}),
+          currentBalance: c.currentBalance,
+        },
         create: {
           companyId,
           externalId: c.externalId,

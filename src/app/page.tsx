@@ -6,7 +6,8 @@ import { MetricCard } from "@/components/MetricCard";
 import { SyncNowButton } from "@/components/SyncNowButton";
 import { getEnv } from "@/lib/env";
 import { formatInr } from "@/lib/format";
-import { getLastSyncRun, getOverdueCustomers, getQuickMetrics } from "@/lib/metrics";
+import { getLastSyncRun, getQuickMetrics } from "@/lib/metrics";
+import { getOverdueCustomers } from "@/lib/overdue";
 
 export const dynamic = "force-dynamic"; // always show fresh dues, never cache
 
@@ -22,11 +23,14 @@ function timeAgo(date: Date): string {
 
 export default async function DashboardPage() {
   const { DEFAULT_COMPANY_ID } = getEnv();
-  const [metrics, overdueCustomers, lastSync] = await Promise.all([
+  const [metrics, overdue, lastSync] = await Promise.all([
     getQuickMetrics(DEFAULT_COMPANY_ID),
     getOverdueCustomers(DEFAULT_COMPANY_ID),
     getLastSyncRun(DEFAULT_COMPANY_ID),
   ]);
+  // The dashboard is a summary - the full list, with search/filters and
+  // per-invoice detail, lives at /overdue.
+  const topOverdue = overdue.customers.slice(0, 10);
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -39,7 +43,10 @@ export default async function DashboardPage() {
               : "No sync has run yet"}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link href="/overdue" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
+            Overdue
+          </Link>
           <Link href="/brokerage" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
             Brokerage
           </Link>
@@ -63,8 +70,15 @@ export default async function DashboardPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Action Center</h2>
-        <ActionCenterList customers={overdueCustomers} />
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Action Center</h2>
+          {overdue.customers.length > topOverdue.length ? (
+            <Link href="/overdue" className="text-xs font-semibold text-brand">
+              See all {overdue.customers.length} →
+            </Link>
+          ) : null}
+        </div>
+        <ActionCenterList customers={topOverdue} />
       </section>
     </main>
   );

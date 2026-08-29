@@ -1,5 +1,23 @@
 import { formatDateDDMMYYYY, formatInr } from "@/lib/format";
 
+/** Normalizes a phone number to wa.me's digits-with-country-code form, or
+ * null when there aren't enough digits to be a real number. */
+export function toWhatsAppNumber(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 10) return null;
+  // Assume an Indian mobile number when no country code is present.
+  return digits.length === 10 ? `91${digits}` : digits;
+}
+
+/** wa.me deep link carrying an already-composed message (the per-customer
+ * reminder rendered from the owner's own template - see src/lib/overdue.ts). */
+export function buildWhatsAppLink(phone: string | null, message: string): string | null {
+  const number = toWhatsAppNumber(phone);
+  if (!number) return null;
+  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+}
+
 /**
  * Builds a wa.me deep link with a pre-filled, text-only reminder message.
  * No WhatsApp Business API / Twilio needed - the link just opens the

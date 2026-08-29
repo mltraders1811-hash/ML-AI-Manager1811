@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getIstTodayRange, getIstYesterdayRange } from "@/lib/dateIst";
+import { getOverdueCustomers as getOverdueDetail } from "@/lib/overdue";
 
 export type QuickMetrics = {
   totalOutstanding: number;
@@ -11,12 +12,8 @@ export type QuickMetrics = {
 export async function getQuickMetrics(companyId: string): Promise<QuickMetrics> {
   const { yesterdayStart, todayStart } = getIstYesterdayRange();
 
-  const [totalOutstandingAgg, overdueCustomers, salesAgg] = await Promise.all([
-    prisma.customer.aggregate({
-      where: { companyId, currentBalance: { gt: 0 } },
-      _sum: { currentBalance: true },
-    }),
-    getOverdueCustomers(companyId),
+  const [overdue, salesAgg] = await Promise.all([
+    getOverdueDetail(companyId),
     prisma.invoice.aggregate({
       where: { companyId, type: "SALE", invoiceDate: { gte: yesterdayStart, lt: todayStart } },
       _sum: { totalAmount: true },
@@ -24,12 +21,10 @@ export async function getQuickMetrics(companyId: string): Promise<QuickMetrics> 
   ]);
 
   return {
-    totalOutstanding: totalOutstandingAgg._sum.currentBalance?.toNumber() ?? 0,
-    overdueAmount: overdueCustomers.reduce((sum, c) => sum + c.totalOverdue, 0),
-    // Counts customers with overdue debt, not individual invoices - see
-    // the note on getOverdueCustomers below for why invoice-level counts
-    // aren't reliable here.
-    overdueCount: overdueCustomers.length,
+    totalOutstanding: overdue.summary.totalOutstanding,
+    overdueAmount: overdue.summary.totalOverdue,
+    // Customers with overdue debt, not individual invoices.
+    overdueCount: overdue.summary.customerCount,
     yesterdaySales: salesAgg._sum.totalAmount?.toNumber() ?? 0,
   };
 }
@@ -45,54 +40,31 @@ export type OverdueCustomer = {
 };
 
 /**
- * One row per customer with an overdue balance, sorted by amount owed
- * (largest first) - this is the Action Center's "Smart List".
- *
- * The amount owed (totalOverdue) comes from Customer.currentBalance -
- * Vyapar's own per-party running balance - NOT from summing individual
- * overdue invoices' balanceAmount, which is unreliable (see the comment on
- * Customer.currentBalance in schema.prisma). Invoice due dates are still
- * used to decide *whether* a customer counts as overdue and since when:
- * a customer qualifies if they have a positive currentBalance AND at
- * least one SALE invoice whose due date has passed. invoiceCount reflects
- * how many such past-due invoices exist on file - useful context, but
- * don't read it as "this many invoices are still unpaid".
+ * One row per customer with an overdue balance - the Action Center's
+ * "Smart List". A flattened view of src/lib/overdue.ts, which owns the real
+ * logic (per-customer credit terms, per-invoice ageing); this keeps the
+ * dashboard's simpler shape without duplicating that calculation.
  */
 export async function getOverdueCustomers(companyId: string): Promise<OverdueCustomer[]> {
-  const { tomorrowStart, todayStart } = getIstTodayRange();
-
-  const invoices = await prisma.invoice.findMany({
-    where: { companyId, type: "SALE", dueDate: { lt: tomorrowStart } },
-    include: { customer: true },
-    orderBy: { dueDate: "asc" },
-  });
-
-  const byCustomer = new Map<string, OverdueCustomer>();
-  for (const inv of invoices) {
-    const dueDate = inv.dueDate ?? inv.invoiceDate;
-    const existing = byCustomer.get(inv.customerId);
-    if (existing) {
-      existing.invoiceCount += 1;
-      if (dueDate < existing.oldestDueDate) existing.oldestDueDate = dueDate;
-    } else {
-      byCustomer.set(inv.customerId, {
-        customerId: inv.customerId,
-        name: inv.customer.name,
-        phone: inv.customer.phone,
-        totalOverdue: inv.customer.currentBalance.toNumber(),
-        oldestDueDate: dueDate,
-        daysOverdue: 0,
-        invoiceCount: 1,
-      });
-    }
-  }
-
-  const result = Array.from(byCustomer.values()).filter((c) => c.totalOverdue > 0);
-  for (const c of result) {
-    c.daysOverdue = Math.max(0, Math.floor((todayStart.getTime() - c.oldestDueDate.getTime()) / 86_400_000));
-  }
-  result.sort((a, b) => b.totalOverdue - a.totalOverdue);
-  return result;
+  const { customers } = await getOverdueDetail(companyId);
+  return customers.map((c) => ({
+    customerId: c.customerId,
+    name: c.party,
+    phone: c.phone,
+    totalOverdue: c.overdueAmount,
+    // The oldest still-unpaid bill is what a reminder should quote as
+    // "due since"; fall back to today when a balance couldn't be tied to a
+    // specific invoice (see the unattributed-remainder note in overdue.ts).
+    oldestDueDate: (() => {
+      const overdueInvoices = c.invoices.filter((i) => i.isOverdue);
+      if (overdueInvoices.length === 0) return new Date();
+      const oldest = overdueInvoices[overdueInvoices.length - 1]!;
+      const [dd, mm, yyyy] = oldest.dueDate.split("/").map(Number);
+      return new Date(Date.UTC(yyyy!, mm! - 1, dd!));
+    })(),
+    daysOverdue: c.maxDaysOverdue,
+    invoiceCount: c.invoiceCount,
+  }));
 }
 
 export async function getLastSyncRun(companyId: string) {

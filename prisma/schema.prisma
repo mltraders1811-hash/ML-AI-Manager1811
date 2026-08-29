@@ -26,6 +26,8 @@ model Company {
 
   brokerageReports  BrokerageReport[]
   brokeragePayments BrokeragePayment[]
+
+  overdueSettings OverdueSettings?
 }
 
 model Customer {
@@ -51,6 +53,13 @@ model Customer {
   // computed from - see src/lib/metrics.ts.
   currentBalance Decimal @default(0) @db.Decimal(14, 2)
 
+  // Grace period after the invoice date before a bill counts as overdue.
+  // Null means "use the company-wide default" (OverdueSettings.creditDays) -
+  // stored per customer because terms genuinely differ per party.
+  creditDays Int?
+  // Free-text note kept alongside the phone number in the phone book.
+  note String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -59,6 +68,19 @@ model Customer {
 
   @@unique([companyId, externalId])
   @@index([companyId, name])
+}
+
+// Company-wide collections settings: the fallback credit period and the
+// WhatsApp reminder wording. One row per company.
+model OverdueSettings {
+  companyId String @id
+
+  creditDays       Int    @default(25)
+  reminderTemplate String
+
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
 }
 
 enum InvoiceType {
