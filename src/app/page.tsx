@@ -65,6 +65,9 @@ export default async function DashboardPage() {
           <Link href="/chat" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
             AI Chat
           </Link>
+          <Link href="/settings/notifications" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
+            Alerts
+          </Link>
           <SyncNowButton />
           <LogoutButton />
         </div>

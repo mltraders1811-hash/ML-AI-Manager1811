@@ -3,6 +3,7 @@
 // Deliberately outside src/app so Next.js never bundles better-sqlite3,
 // adm-zip, or googleapis into a Vercel serverless function.
 import { prisma } from "../src/lib/prisma";
+import { sendDailyDigest, sendSyncFailureAlert } from "../src/lib/push";
 import { runSync } from "../src/lib/sync/syncEngine";
 
 /**
@@ -36,6 +37,28 @@ async function recordEarlyFailure(message: string) {
   }
 }
 
+/**
+ * The digest is sent from here rather than from the app, because this is the
+ * one moment the figures are known to be fresh. It is deliberately outside
+ * the sync's own error handling: a push service being down must not turn a
+ * successful sync into a failed one.
+ */
+async function notify() {
+  const companyId = process.env.DEFAULT_COMPANY_ID;
+  if (!companyId) return;
+  try {
+    const outcome = await sendDailyDigest(companyId);
+    if (outcome.status === "sent") {
+      console.log(`[push] digest sent to ${outcome.result.sent} device(s): ${outcome.title}`);
+      if (outcome.result.removed) console.log(`[push] dropped ${outcome.result.removed} dead subscription(s)`);
+    } else {
+      console.log(`[push] no digest sent (${outcome.reason})`);
+    }
+  } catch (err) {
+    console.warn(`[push] digest failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 async function main() {
   console.log(`[sync] starting at ${new Date().toISOString()}`);
   const result = await runSync();
@@ -43,6 +66,7 @@ async function main() {
   if (result.warnings.length) {
     console.warn(`[sync] ${result.warnings.length} warning(s) - see SyncRun.errorMessage in the DB for the full list`);
   }
+  await notify();
 }
 
 main()
@@ -54,6 +78,15 @@ main()
     const message = err instanceof Error ? err.message : String(err);
     console.error("[sync] FAILED:", message);
     await recordEarlyFailure(message);
+    // The dashboard banner only warns whoever opens the app. A failed sync
+    // that nobody notices means stale figures being read as current ones,
+    // so it is worth a notification of its own.
+    try {
+      const companyId = process.env.DEFAULT_COMPANY_ID;
+      if (companyId) await sendSyncFailureAlert(companyId, message);
+    } catch {
+      // Already failing; a second failure here changes nothing.
+    }
     await prisma.$disconnect();
     process.exit(1);
   });

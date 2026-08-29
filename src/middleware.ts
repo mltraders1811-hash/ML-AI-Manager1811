@@ -4,10 +4,20 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 const PUBLIC_PATHS = ["/login", "/api/auth/login"];
 
+// Installability assets. A browser fetches the manifest and the service
+// worker script outside the page's own request - and a service worker that
+// gets a login redirect fails registration with a MIME-type error rather
+// than anything that names the real problem. None of these reveal any data.
+const PUBLIC_FILES = ["/manifest.webmanifest", "/sw.js", "/offline"];
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return NextResponse.next();
+  }
+
+  if (PUBLIC_FILES.includes(pathname) || pathname.startsWith("/icons/")) {
     return NextResponse.next();
   }
 

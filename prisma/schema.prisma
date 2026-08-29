@@ -30,6 +30,8 @@ model Company {
   overdueSettings       OverdueSettings?
   invoiceDesignSettings InvoiceDesignSettings?
   reminderLogs          ReminderLog[]
+  pushSubscriptions     PushSubscription[]
+  pushDigests           PushDigest[]
 }
 
 model Customer {
@@ -60,7 +62,7 @@ model Customer {
   // stored per customer because terms genuinely differ per party.
   creditDays Int?
   // Free-text note kept alongside the phone number in the phone book.
-  note String?
+  note       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -78,14 +80,14 @@ model Customer {
 model InvoiceDesignSettings {
   companyId String @id
 
-  businessName String
-  addressLine  String?
-  phone        String?
-  gstin        String?
+  businessName  String
+  addressLine   String?
+  phone         String?
+  gstin         String?
   // Hex colour used for the header band and table headings.
-  accentColor String @default("#2B5336")
+  accentColor   String  @default("#2B5336")
   // Free text printed at the bottom of every invoice (terms, thanks, etc).
-  footerNote String?
+  footerNote    String?
   showLineItems Boolean @default(true)
 
   updatedAt DateTime @updatedAt
@@ -107,8 +109,8 @@ model ReminderLog {
   customerId String
   sentAt     DateTime @default(now())
 
-  balanceAtSend  Decimal @db.Decimal(14, 2)
-  overdueAtSend  Decimal @db.Decimal(14, 2)
+  balanceAtSend     Decimal @db.Decimal(14, 2)
+  overdueAtSend     Decimal @db.Decimal(14, 2)
   daysOverdueAtSend Int
 
   company  Company  @relation(fields: [companyId], references: [id])
@@ -161,7 +163,7 @@ model Invoice {
   // Nullable: Vyapar may not store an explicit due date. The sync engine
   // falls back to invoiceDate + DEFAULT_PAYMENT_TERMS_DAYS when absent -
   // see src/lib/sync/syncEngine.ts.
-  dueDate DateTime?
+  dueDate       DateTime?
 
   totalAmount   Decimal @db.Decimal(14, 2)
   paidAmount    Decimal @default(0) @db.Decimal(14, 2)
@@ -232,16 +234,16 @@ model SyncRun {
   id        String @id @default(uuid())
   companyId String
 
-  startedAt  DateTime   @default(now())
+  startedAt  DateTime    @default(now())
   finishedAt DateTime?
   status     SyncStatus?
 
   sourceFileName String?
 
-  customersUpserted  Int @default(0)
-  invoicesUpserted   Int @default(0)
-  lineItemsUpserted  Int @default(0)
-  inventoryUpserted  Int @default(0)
+  customersUpserted Int @default(0)
+  invoicesUpserted  Int @default(0)
+  lineItemsUpserted Int @default(0)
+  inventoryUpserted Int @default(0)
 
   errorMessage String?
 
@@ -268,7 +270,7 @@ model BrokerageReport {
 
   filename   String
   fileSize   Int
-  uploadedAt DateTime @default(now())
+  uploadedAt DateTime              @default(now())
   month      String? // YYYY-MM, detected from the most common transaction date
   source     BrokerageReportSource @default(UPLOAD)
 
@@ -282,12 +284,12 @@ model BrokerageReport {
   brokers  BrokerageBrokerSummary[]
   payments BrokeragePayment[]
 
-  @@index([companyId, uploadedAt])
-  @@index([companyId, month])
   // One derived report per month, kept stable across daily re-syncs so
   // BrokeragePayment rows (linked by reportId) survive re-derivation -
   // see upsertDerivedReport in src/lib/brokerage/reportService.ts.
   @@unique([companyId, month, source])
+  @@index([companyId, uploadedAt])
+  @@index([companyId, month])
 }
 
 model BrokerageBrokerSummary {
@@ -343,4 +345,59 @@ model BrokeragePayment {
   report  BrokerageReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@index([companyId, reportId])
+}
+
+/**
+ * One browser that has agreed to receive notifications. A person can have
+ * several (phone, laptop), and a subscription dies silently when they clear
+ * site data or reinstall - the push service then answers 404/410, which is
+ * the only reliable signal to drop the row.
+ */
+model PushSubscription {
+  id        String @id @default(uuid())
+  companyId String
+
+  /**
+   * The push service URL. Unique because it IS the subscription's
+   * identity - re-subscribing on the same browser returns the same
+   * endpoint, and inserting again would double every notification.
+   */
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  /**
+   * Shown in settings so the owner can tell one device from another when
+   * revoking.
+   */
+  label      String?
+  createdAt  DateTime  @default(now())
+  lastSentAt DateTime?
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+/**
+ * A record that the daily digest went out, keyed by IST calendar day. The
+ * unique constraint is the dedupe: a sync that runs twice in a day (a
+ * retry, a manual Sync Now) must not buzz the phone twice.
+ */
+model PushDigest {
+  id        String @id @default(uuid())
+  companyId String
+
+  /**
+   * IST date as YYYY-MM-DD.
+   */
+  dayKey    String
+  title     String
+  body      String
+  sentCount Int
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, dayKey])
 }

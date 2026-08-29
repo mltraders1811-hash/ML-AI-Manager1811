@@ -264,6 +264,41 @@ see "How it works" above). To enable it:
 Without this token the button still shows but returns a clear "not set up
 yet" message instead of failing silently.
 
+### 7. Phone app and notifications (optional)
+
+The dashboard is a PWA: on Android, Chrome offers an **Install** banner that
+puts it on the home screen; on iPhone it's Safari's Share ▸ **Add to Home
+Screen**. Installed, it opens without browser chrome and keeps working
+offline - pages you have already opened are served from a local copy, always
+with a banner saying how old that copy is. API responses are never cached,
+and logging out wipes the cached pages.
+
+Push notifications are opt-in and need one keypair:
+
+```bash
+node -e "console.log(JSON.stringify(require('web-push').generateVAPIDKeys(),null,2))"
+```
+
+Add `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` in **two** places - Vercel
+(so the browser can subscribe) and GitHub Actions secrets (so the daily sync
+can send). Then open **Alerts** on the dashboard and turn them on; there's a
+test button to confirm delivery before relying on it.
+
+Two things get sent, both from the sync job:
+
+- the **daily overdue digest**, after a successful sync, only when something
+  is actually past its credit period and worth more than ₹1,000. A quiet day
+  sends nothing, which is what keeps the alert meaningful.
+- a **sync failure alert**, so figures that have stopped updating don't get
+  read as current ones.
+
+The digest is deduped on the IST calendar day, so pressing Sync Now after
+the morning run doesn't buzz the phone twice.
+
+On iPhone, web push works **only** once the app is on the home screen (iOS
+16.4+); the Alerts screen says so rather than showing a toggle that can't
+work.
+
 ## Backups
 
 Most of this database is disposable - customers, invoices, line items and

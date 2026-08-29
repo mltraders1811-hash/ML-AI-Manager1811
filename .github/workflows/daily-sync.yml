@@ -32,6 +32,11 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GDRIVE_BACKUP_FOLDER_ID: ${{ secrets.GDRIVE_BACKUP_FOLDER_ID }}
           DEFAULT_PAYMENT_TERMS_DAYS: ${{ vars.DEFAULT_PAYMENT_TERMS_DAYS }}
+          # Optional: without these the sync runs exactly as before, just
+          # without sending the daily overdue notification.
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
 
       # GitHub emails the repo owner when a scheduled workflow fails, but the
       # default mail says only "workflow failed". These summaries put the

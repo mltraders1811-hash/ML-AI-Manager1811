@@ -12,6 +12,14 @@ export function istStartOfDay(date: Date): Date {
   return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - IST_OFFSET_MINUTES * 60_000);
 }
 
+/** The IST calendar date as YYYY-MM-DD. Note this is NOT
+ * istStartOfDay().toISOString().slice(0,10): that instant is IST midnight
+ * expressed in UTC, which for every day of the year reads as the *previous*
+ * date. */
+export function istDateString(date: Date): string {
+  return new Date(date.getTime() + IST_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
+}
+
 export function addDays(date: Date, days: number): Date {
   const d = new Date(date);
   d.setUTCDate(d.getUTCDate() + days);

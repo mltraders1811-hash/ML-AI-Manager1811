@@ -16,6 +16,11 @@ const envSchema = z.object({
   SESSION_SECRET: z.string().min(16, "SESSION_SECRET must be at least 16 characters"),
   ANTHROPIC_API_KEY: optionalEnv(z.string().optional()),
   DEFAULT_PAYMENT_TERMS_DAYS: optionalEnv(z.coerce.number().int().positive().default(15)),
+  // Push notifications are opt-in config: absent keys disable the feature
+  // rather than blocking boot, because the app is fully usable without it.
+  VAPID_PUBLIC_KEY: optionalEnv(z.string().optional()),
+  VAPID_PRIVATE_KEY: optionalEnv(z.string().optional()),
+  VAPID_SUBJECT: optionalEnv(z.string().optional()),
 });
 
 const syncEnvSchema = z.object({
@@ -24,6 +29,9 @@ const syncEnvSchema = z.object({
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1, "GOOGLE_SERVICE_ACCOUNT_JSON is required"),
   GDRIVE_BACKUP_FOLDER_ID: z.string().min(1, "GDRIVE_BACKUP_FOLDER_ID is required"),
   DEFAULT_PAYMENT_TERMS_DAYS: optionalEnv(z.coerce.number().int().positive().default(15)),
+  VAPID_PUBLIC_KEY: optionalEnv(z.string().optional()),
+  VAPID_PRIVATE_KEY: optionalEnv(z.string().optional()),
+  VAPID_SUBJECT: optionalEnv(z.string().optional()),
 });
 
 let cached: z.infer<typeof envSchema> | null = null;
