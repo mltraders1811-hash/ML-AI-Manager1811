@@ -42,7 +42,7 @@ export function SyncNowButton() {
         {status === "loading" ? "Starting sync..." : "Sync Now"}
       </button>
       {message && (
-        <p className={`max-w-[220px] text-right text-xs ${status === "error" ? "text-red-600" : "text-neutral-500"}`}>
+        <p className={`max-w-[420px] whitespace-pre-wrap break-words text-right text-xs ${status === "error" ? "text-red-600" : "text-neutral-500"}`}>
           {message}
         </p>
       )}
