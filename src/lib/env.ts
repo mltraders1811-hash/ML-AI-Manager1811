@@ -28,6 +28,9 @@ const syncEnvSchema = z.object({
   DEFAULT_COMPANY_ID: z.string().uuid("DEFAULT_COMPANY_ID must be a UUID"),
   GOOGLE_SERVICE_ACCOUNT_JSON: z.string().min(1, "GOOGLE_SERVICE_ACCOUNT_JSON is required"),
   GDRIVE_BACKUP_FOLDER_ID: z.string().min(1, "GDRIVE_BACKUP_FOLDER_ID is required"),
+  // Optional second folder: where bank statements land. Absent means the
+  // bank screen still works from uploads, just without the daily pickup.
+  GDRIVE_BANK_STATEMENT_FOLDER_ID: optionalEnv(z.string().optional()),
   DEFAULT_PAYMENT_TERMS_DAYS: optionalEnv(z.coerce.number().int().positive().default(15)),
   VAPID_PUBLIC_KEY: optionalEnv(z.string().optional()),
   VAPID_PRIVATE_KEY: optionalEnv(z.string().optional()),

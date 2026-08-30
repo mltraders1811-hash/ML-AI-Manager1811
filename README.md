@@ -18,6 +18,9 @@ SQLite database (unencrypted). Once a day, a scheduled job:
    (inventory).
 4. **Syncs** the normalized data into a multi-tenant Postgres database (idempotent upserts, safe to re-run).
 
+The same job then reads any new **bank statement** dropped in a second Drive
+folder and reconciles it against those customers - see Bank reconciliation below.
+
 The Next.js app reads from that Postgres database to power the dashboard,
 WhatsApp reminder links, and the AI chat assistant.
 
@@ -79,6 +82,64 @@ is negative for 1,705 of 2,110 items (down to -15 lakh) because goods leave
 without purchases going in, so it isn't a stock figure. Fill in purchase
 rates in Vyapar and margins become computable; until then the app says so
 rather than publishing a confident wrong number.
+
+## Bank reconciliation (`/bank`)
+
+Vyapar knows what each party was **billed**. Only the bank knows what actually
+**arrived** - and a bank narration says `UPI/CR/451203377421/SHARMA TRAD/HDFC`,
+not which customer that is. `/bank` closes that gap: it reads the statement,
+matches what it can, and asks one question about the rest - *kiska payment hai?*
+
+**Getting the statement in.** Two ways, and they dedupe against each other:
+
+- **Automatic (daily).** Point `GDRIVE_BANK_STATEMENT_FOLDER_ID` at a Drive
+  folder shared with the same service account. Every morning, right after the
+  Vyapar sync, whatever is new in that folder is read and reconciled. Most
+  net-banking portals will email or export a statement on a schedule - a Gmail
+  filter that saves the attachment to Drive is enough to make this hands-off.
+  There is no transaction API to connect to here: no Indian bank offers a small
+  shop one, and the account-aggregator route needs a licensed intermediary, so
+  the scheduled statement *is* the connection.
+- **By hand.** Tap **Add statement** on the phone and pick the file. Useful the
+  first time, and for a bank that won't export on a schedule.
+
+CSV and `.xlsx` are read (PDF is not - download the same statement as CSV).
+There is no per-bank parser: the header row is detected and columns are mapped
+by keyword, so HDFC's `Withdrawal Amt./Deposit Amt.`, SBI's `Debit/Credit` and
+Kotak's single `Amount` + `Dr / Cr` all work, as do day-first, ISO and
+`05-Aug-26` dates, `(4,500.00)` for money out, and narrations containing commas.
+
+**Re-reading a statement is always safe.** Every line carries a fingerprint of
+its date, amount, direction, narration and position among identical lines that
+day, so an overlapping download - or the same file uploaded twice - adds
+nothing rather than doubling the month.
+
+**Matching.** Each credit is scored against the customer list on three signals:
+
+1. **A learnt rule.** The first time you say "this counterparty is Sharma
+   Traders", it is remembered. From then on that payer is recognised on sight,
+   whatever the amount - which is what makes month two much quicker than month one.
+2. **The name in the narration.** Rails, bank codes, IFSC fragments and
+   reference numbers are stripped out; what's left is matched prefix-tolerantly
+   (`SHARMA TRAD` = Sharma Traders), space-insensitively
+   (`SHARMATRADERS@OKHDFCBANK`), and ignoring `M/s`, `Pvt` and `Ltd`.
+3. **Corroboration.** The payer's phone number appearing in the narration, or
+   an amount that exactly matches one of that party's recent bills.
+
+A name match alone suggests but never decides; it takes a learnt rule, or a
+name plus corroboration, to assign a payment automatically - and two similarly
+named parties always go to a person instead. Everything else lands in the
+**Kiska hai?** tab, each entry showing the top three guesses with the reason
+underneath, a full customer search behind them, and **Payment nahi** for what
+isn't a customer payment at all. When several undecided entries share a payer,
+one tap clears them all; **Change** undoes a wrong match *and* forgets the rule
+that caused it, so the same mistake isn't repeated every month.
+
+**It never writes back to Vyapar's figures.** Customer balances and invoices
+are rebuilt from the Vyapar backup on every sync, so anything recorded into
+them would be silently overwritten the next morning. The bank ledger is
+therefore its own record, sitting beside them: what was billed (Vyapar) against
+what turned up (bank), with a name against each receipt.
 
 ## Brokerage tracking (`/brokerage`)
 
@@ -209,6 +270,11 @@ column), since this flag would let that through unprompted too.
 3. Copy the folder's ID (from its URL) into `GDRIVE_BACKUP_FOLDER_ID`.
 4. Put the full JSON key (as one line) into `GOOGLE_SERVICE_ACCOUNT_JSON`.
 
+If you also want bank statements picked up automatically (see Bank
+reconciliation above), share a second folder with the same `client_email` and
+put its ID in `GDRIVE_BANK_STATEMENT_FOLDER_ID`. Leaving it blank just means
+statements are uploaded by hand from `/bank`.
+
 Point `GDRIVE_BACKUP_FOLDER_ID` at the **top-level** folder Vyapar backs up
 to (e.g. "Vyapar Mobile"), not at a month folder inside it. Vyapar files its
 `.vyb` backups into per-month subfolders (`08-2026`, `09-2026`, ...) and
@@ -236,6 +302,8 @@ Push this repo to GitHub, then add these as **repository secrets**
 - `DEFAULT_COMPANY_ID`
 - `GOOGLE_SERVICE_ACCOUNT_JSON`
 - `GDRIVE_BACKUP_FOLDER_ID`
+- `GDRIVE_BANK_STATEMENT_FOLDER_ID` (optional - enables the daily bank
+  statement pickup; without it the sync skips that step entirely)
 
 `.github/workflows/daily-sync.yml` runs it every day at 08:30 IST, and can
 also be triggered manually from the Actions tab - or from the **"Sync Now"**

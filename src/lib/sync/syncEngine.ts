@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getSyncEnv } from "@/lib/env";
+import { importStatementsFromDrive } from "@/lib/bank/driveStatements";
 import { upsertDerivedReport } from "@/lib/brokerage/reportService";
 
 import { downloadFile, findLatestBackup } from "./driveClient";
@@ -15,6 +16,9 @@ export type SyncSummary = {
   lineItemsUpserted: number;
   inventoryUpserted: number;
   brokerageReportsUpserted: number;
+  bankStatementsImported: number;
+  bankRowsImported: number;
+  bankAutoMatched: number;
   warnings: string[];
 };
 
@@ -53,11 +57,16 @@ function addDays(date: Date, days: number): Date {
   return d;
 }
 
+type PersistSummary = Omit<
+  SyncSummary,
+  "sourceFileName" | "brokerageReportsUpserted" | "bankStatementsImported" | "bankRowsImported" | "bankAutoMatched"
+>;
+
 export async function persistExtract(
   companyId: string,
   extract: VyaparExtract,
   defaultPaymentTermsDays: number,
-): Promise<Omit<SyncSummary, "sourceFileName" | "brokerageReportsUpserted">> {
+): Promise<PersistSummary> {
   const warnings: string[] = [];
 
   // --- Customers first, so invoices can resolve their internal id ---
@@ -224,6 +233,27 @@ export async function runSync(): Promise<SyncSummary> {
         result.warnings.push(`Brokerage derivation: ${(e as Error).message}`);
       }
 
+      // Bank statements are a separate source from the Vyapar backup and a
+      // separate kind of failure: a missing statement folder, or one file
+      // in it that can't be read, must not turn a good Vyapar sync into a
+      // failed one. So the whole step is warnings-only.
+      const bank = { statements: 0, rows: 0, autoMatched: 0 };
+      if (env.GDRIVE_BANK_STATEMENT_FOLDER_ID) {
+        try {
+          const summary = await importStatementsFromDrive(
+            companyId,
+            env.GOOGLE_SERVICE_ACCOUNT_JSON,
+            env.GDRIVE_BANK_STATEMENT_FOLDER_ID,
+          );
+          bank.statements = summary.imports.length;
+          bank.rows = summary.imports.reduce((sum, i) => sum + i.rowsImported, 0);
+          bank.autoMatched = summary.imports.reduce((sum, i) => sum + i.autoMatched, 0);
+          for (const message of summary.errors) result.warnings.push(`Bank statement: ${message}`);
+        } catch (e) {
+          result.warnings.push(`Bank statement import: ${(e as Error).message}`);
+        }
+      }
+
       await prisma.syncRun.update({
         where: { id: syncRun.id },
         data: {
@@ -238,7 +268,14 @@ export async function runSync(): Promise<SyncSummary> {
         },
       });
 
-      return { sourceFileName: latest.name, ...result, brokerageReportsUpserted };
+      return {
+        sourceFileName: latest.name,
+        ...result,
+        brokerageReportsUpserted,
+        bankStatementsImported: bank.statements,
+        bankRowsImported: bank.rows,
+        bankAutoMatched: bank.autoMatched,
+      };
     } finally {
       cleanupExtractDir(extractDir);
     }

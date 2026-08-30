@@ -32,6 +32,11 @@ model Company {
   reminderLogs          ReminderLog[]
   pushSubscriptions     PushSubscription[]
   pushDigests           PushDigest[]
+
+  bankAccounts     BankAccount[]
+  bankImports      BankStatementImport[]
+  bankTransactions BankTransaction[]
+  bankMatchRules   BankMatchRule[]
 }
 
 model Customer {
@@ -70,6 +75,9 @@ model Customer {
   company   Company       @relation(fields: [companyId], references: [id])
   invoices  Invoice[]
   reminders ReminderLog[]
+
+  bankTransactions BankTransaction[]
+  bankMatchRules   BankMatchRule[]
 
   @@unique([companyId, externalId])
   @@index([companyId, name])
@@ -400,4 +408,173 @@ model PushDigest {
   company Company @relation(fields: [companyId], references: [id])
 
   @@unique([companyId, dayKey])
+}
+
+// ---------- Bank reconciliation ----------
+// Money actually landing in the bank, reconciled against the parties in the
+// phone book. Vyapar knows what each party was billed; only the bank knows
+// what turned up, and a bank narration says "UPI/CR/4471/SHARMA TRAD" - not
+// which customer that is. These tables hold each statement line, who it was
+// finally decided to belong to, and the counterparty->customer rules learnt
+// from those decisions so the same payer is recognised automatically next
+// time.
+//
+// Deliberately a ledger of its own: it never writes back to Invoice or
+// Customer.currentBalance, both of which are rebuilt from Vyapar on every
+// sync and would silently overwrite anything recorded here.
+
+enum BankTxnDirection {
+  CREDIT // money in - a customer payment, until decided otherwise
+  DEBIT // money out - supplier payment, charges, self transfer
+}
+
+enum BankTxnStatus {
+  UNMATCHED // nobody knows whose this is yet
+  SUGGESTED // the matcher has a guess worth showing, not sure enough to apply
+  MATCHED // assigned to a customer
+  IGNORED // decided not to be a customer payment
+}
+
+enum BankMatchSource {
+  AUTO_RULE // a learnt counterparty -> customer rule fired
+  AUTO_NAME // the narration named the customer closely enough
+  MANUAL // a person tapped the customer
+}
+
+enum BankImportSource {
+  UPLOAD // statement file picked from the phone
+  DRIVE // statement file the bank/an automation drops in Google Drive
+}
+
+model BankAccount {
+  id        String @id @default(uuid())
+  companyId String
+
+  bankName     String
+  label        String
+  /// Last 4 digits as printed on the statement. Empty string (not null)
+  /// when the statement never says, so the unique constraint below still
+  /// applies - Postgres treats NULLs as distinct and would let duplicate
+  /// accounts pile up.
+  accountLast4 String @default("")
+
+  createdAt DateTime @default(now())
+
+  company      Company               @relation(fields: [companyId], references: [id])
+  imports      BankStatementImport[]
+  transactions BankTransaction[]
+
+  @@unique([companyId, bankName, accountLast4])
+}
+
+/// One statement file read in, whether uploaded from the phone or picked up
+/// from Drive. Keeps the counts that let the app say "142 lines, 9 new" and
+/// - through externalId - stops the daily job re-reading the same file.
+model BankStatementImport {
+  id        String  @id @default(uuid())
+  companyId String
+  /// Null only for a file that could not be parsed at all - which account
+  /// it belonged to is exactly what such a file never got as far as saying.
+  /// The row is still written, so the daily job doesn't retry the same
+  /// unreadable file every morning.
+  accountId String?
+
+  source     BankImportSource @default(UPLOAD)
+  filename   String
+  fileSize   Int
+  importedAt DateTime         @default(now())
+
+  /// Google Drive file id for DRIVE imports; null for uploads.
+  externalId String?
+
+  rowsParsed    Int @default(0)
+  rowsImported  Int @default(0)
+  rowsDuplicate Int @default(0)
+  autoMatched   Int @default(0)
+
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  errorMessage String?
+
+  company      Company           @relation(fields: [companyId], references: [id])
+  account      BankAccount?      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transactions BankTransaction[]
+
+  @@unique([companyId, externalId])
+  @@index([companyId, importedAt])
+}
+
+model BankTransaction {
+  id        String  @id @default(uuid())
+  companyId String
+  accountId String
+  importId  String?
+
+  /// UTC midnight of the statement's calendar date, matching how invoice
+  /// dates are stored (see src/lib/dateIst.ts).
+  txnDate      DateTime
+  valueDate    DateTime?
+  description  String
+  reference    String?
+  direction    BankTxnDirection
+  /// Always positive; direction carries the sign.
+  amount       Decimal          @db.Decimal(14, 2)
+  balanceAfter Decimal?         @db.Decimal(14, 2)
+
+  /// Hash of the statement line (date, amount, direction, narration, and
+  /// its position among identical lines that same day). Statements overlap
+  /// - last month's file re-downloaded next month repeats every row - so
+  /// this is what makes importing the same period twice a no-op.
+  fingerprint String
+
+  /// The other party as pulled out of the narration ("SHARMA TRADERS" from
+  /// "UPI/CR/4471/SHARMA TRADERS/HDFC"), and its normalised form, which is
+  /// what BankMatchRule and the matcher key on.
+  counterparty    String?
+  counterpartyKey String?
+
+  status          BankTxnStatus    @default(UNMATCHED)
+  customerId      String?
+  matchedBy       BankMatchSource?
+  /// 0-100. How sure the matcher was; 100 once a person confirms.
+  matchConfidence Int?
+  note            String?
+  ignoreReason    String?
+  reconciledAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company              @relation(fields: [companyId], references: [id])
+  account  BankAccount          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  import   BankStatementImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  customer Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, fingerprint])
+  @@index([companyId, status, txnDate])
+  @@index([companyId, direction, txnDate])
+  @@index([companyId, customerId])
+  @@index([companyId, counterpartyKey])
+}
+
+/// What the app has learnt: this narration counterparty is this customer.
+/// Written every time someone assigns a payment by hand, which is what
+/// makes the second month of reconciliation far quicker than the first.
+model BankMatchRule {
+  id        String @id @default(uuid())
+  companyId String
+
+  counterpartyKey String
+  customerId      String
+
+  hits       Int      @default(1)
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  company  Company  @relation(fields: [companyId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, counterpartyKey])
+  @@index([companyId, customerId])
 }

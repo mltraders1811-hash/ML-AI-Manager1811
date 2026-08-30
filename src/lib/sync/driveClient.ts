@@ -112,3 +112,54 @@ export async function downloadFile(serviceAccountJson: string, fileId: string): 
   const res = await drive.files.get({ fileId, alt: "media" }, { responseType: "arraybuffer" });
   return Buffer.from(res.data as ArrayBuffer);
 }
+
+/** A file found by listFilesInFolderTree. */
+export type DriveFile = {
+  id: string;
+  name: string;
+  modifiedTime: string;
+};
+
+/**
+ * Every file in a folder (and its immediate subfolders) whose name ends in
+ * one of the given extensions, newest first.
+ *
+ * Bank statements get filed the same way Vyapar backups do - dropped into a
+ * folder, sometimes into a per-month subfolder - so this walks the same one
+ * level down that findLatestBackup does.
+ */
+export async function listFilesInFolderTree(
+  serviceAccountJson: string,
+  folderId: string,
+  opts: { extensions: string[]; maxFiles?: number },
+): Promise<DriveFile[]> {
+  const auth = getAuth(serviceAccountJson);
+  const drive = google.drive({ version: "v3", auth });
+  const maxFiles = opts.maxFiles ?? 50;
+  const extensions = opts.extensions.map((e) => e.toLowerCase());
+
+  const searchIds = [folderId, ...(await listSubfolderIds(drive, folderId))];
+  const found: DriveFile[] = [];
+
+  for (let i = 0; i < searchIds.length && found.length < maxFiles; i += PARENTS_PER_QUERY) {
+    const parentClause = searchIds
+      .slice(i, i + PARENTS_PER_QUERY)
+      .map((id) => `'${id}' in parents`)
+      .join(" or ");
+    const res = await drive.files.list({
+      q: `(${parentClause}) and trashed = false and mimeType != 'application/vnd.google-apps.folder'`,
+      fields: "files(id, name, modifiedTime)",
+      orderBy: "modifiedTime desc",
+      pageSize: 100,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    for (const f of res.data.files ?? []) {
+      if (!f.id || !f.name || !f.modifiedTime) continue;
+      if (!extensions.some((ext) => f.name!.toLowerCase().endsWith(ext))) continue;
+      found.push({ id: f.id, name: f.name, modifiedTime: f.modifiedTime });
+    }
+  }
+
+  return found.sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime)).slice(0, maxFiles);
+}

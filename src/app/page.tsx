@@ -5,6 +5,7 @@ import { LogoutButton } from "@/components/LogoutButton";
 import { MetricCard } from "@/components/MetricCard";
 import { SyncHealthBanner } from "@/components/SyncHealthBanner";
 import { SyncNowButton } from "@/components/SyncNowButton";
+import { getBankSummary } from "@/lib/bank/bankService";
 import { getEnv } from "@/lib/env";
 import { formatInr } from "@/lib/format";
 import { getLastSyncRun, getQuickMetrics } from "@/lib/metrics";
@@ -25,11 +26,12 @@ function timeAgo(date: Date): string {
 
 export default async function DashboardPage() {
   const { DEFAULT_COMPANY_ID } = getEnv();
-  const [metrics, overdue, lastSync, syncHealth] = await Promise.all([
+  const [metrics, overdue, lastSync, syncHealth, bank] = await Promise.all([
     getQuickMetrics(DEFAULT_COMPANY_ID),
     getOverdueCustomers(DEFAULT_COMPANY_ID),
     getLastSyncRun(DEFAULT_COMPANY_ID),
     getSyncHealth(DEFAULT_COMPANY_ID),
+    getBankSummary(DEFAULT_COMPANY_ID),
   ]);
   // The dashboard is a summary - the full list, with search/filters and
   // per-invoice detail, lives at /overdue.
@@ -59,6 +61,9 @@ export default async function DashboardPage() {
           <Link href="/customers" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
             Customers
           </Link>
+          <Link href="/bank" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
+            Bank
+          </Link>
           <Link href="/brokerage" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100">
             Brokerage
           </Link>
@@ -74,6 +79,30 @@ export default async function DashboardPage() {
       </header>
 
       <SyncHealthBanner health={syncHealth} />
+
+      {bank.hasData ? (
+        <Link
+          href="/bank"
+          className={`mb-4 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 shadow-sm transition ${
+            bank.needsReview.count > 0
+              ? "border-amber-300 bg-amber-50 hover:bg-amber-100"
+              : "border-neutral-200 bg-white hover:bg-neutral-50"
+          }`}
+        >
+          <div>
+            <p className="text-sm font-semibold text-neutral-900">
+              {bank.needsReview.count > 0
+                ? `${bank.needsReview.count} bank payment${bank.needsReview.count === 1 ? "" : "s"} need a name`
+                : "Bank payments all named"}
+            </p>
+            <p className="text-xs text-neutral-500">
+              ₹{formatInr(bank.thisMonth.received)} received this month
+              {bank.needsReview.count > 0 ? ` · ₹${formatInr(bank.needsReview.amount)} waiting` : ""}
+            </p>
+          </div>
+          <span className="shrink-0 text-xs font-semibold text-brand">Open →</span>
+        </Link>
+      ) : null}
 
       <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <MetricCard label="Total Outstanding" value={`₹${formatInr(metrics.totalOutstanding)}`} tone="brand" />

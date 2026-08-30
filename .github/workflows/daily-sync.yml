@@ -31,6 +31,10 @@ jobs:
           DEFAULT_COMPANY_ID: ${{ secrets.DEFAULT_COMPANY_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           GDRIVE_BACKUP_FOLDER_ID: ${{ secrets.GDRIVE_BACKUP_FOLDER_ID }}
+          # Optional: the folder bank statements land in. Unset means the
+          # sync skips the bank step entirely and statements are uploaded by
+          # hand from the Bank screen instead.
+          GDRIVE_BANK_STATEMENT_FOLDER_ID: ${{ secrets.GDRIVE_BANK_STATEMENT_FOLDER_ID }}
           DEFAULT_PAYMENT_TERMS_DAYS: ${{ vars.DEFAULT_PAYMENT_TERMS_DAYS }}
           # Optional: without these the sync runs exactly as before, just
           # without sending the daily overdue notification.
