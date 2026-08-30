@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/apiError";
 import { istStartOfDay } from "@/lib/dateIst";
 import { prisma } from "@/lib/prisma";
 
+import { getAlertActivity } from "./alertService";
 import { loadMatchContext } from "./importService";
 import { matchTransaction, type MatchSuggestion } from "./matcher";
 
@@ -169,8 +170,10 @@ export type BankSummary = {
   needsReview: { count: number; amount: number };
   thisMonth: { received: number; paidOut: number; assigned: number; unassigned: number };
   autoMatchedThisMonth: number;
-  lastImport: { at: string; filename: string; source: "UPLOAD" | "DRIVE"; rowsImported: number } | null;
+  lastImport: { at: string; filename: string; source: "UPLOAD" | "DRIVE" | "API"; rowsImported: number } | null;
   accounts: { id: string; label: string; lastTxnDate: string | null; balance: number | null }[];
+  /** Forwarded bank SMS/email over the last week - is that pipeline alive? */
+  alerts: { booked: number; duplicate: number; ignored: number; lastAt: string | null };
   hasData: boolean;
 };
 
@@ -183,7 +186,7 @@ function monthStart(): Date {
 export async function getBankSummary(companyId: string): Promise<BankSummary> {
   const from = monthStart();
 
-  const [pending, monthCredits, monthDebits, monthAssigned, autoMatched, lastImport, accounts, anyTxn] =
+  const [pending, monthCredits, monthDebits, monthAssigned, autoMatched, lastImport, accounts, anyTxn, alerts] =
     await Promise.all([
       prisma.bankTransaction.aggregate({
         where: { companyId, direction: "CREDIT", status: { in: ["UNMATCHED", "SUGGESTED"] } },
@@ -221,6 +224,7 @@ export async function getBankSummary(companyId: string): Promise<BankSummary> {
         orderBy: { createdAt: "asc" },
       }),
       prisma.bankTransaction.findFirst({ where: { companyId }, select: { id: true } }),
+      getAlertActivity(companyId),
     ]);
 
   const accountViews = await Promise.all(
@@ -260,6 +264,7 @@ export async function getBankSummary(companyId: string): Promise<BankSummary> {
         }
       : null,
     accounts: accountViews,
+    alerts,
     hasData: anyTxn !== null,
   };
 }

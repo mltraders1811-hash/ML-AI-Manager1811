@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+// /api/bank/ingest is where forwarded bank SMS arrive: a forwarding app on a
+// phone cannot hold a session cookie, so that route authenticates itself
+// with a bearer token instead (see its own file) and is exempt here.
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/bank/ingest"];
 
 // Installability assets. A browser fetches the manifest and the service
 // worker script outside the page's own request - and a service worker that

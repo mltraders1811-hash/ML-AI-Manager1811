@@ -30,8 +30,9 @@ type Summary = {
   needsReview: { count: number; amount: number };
   thisMonth: { received: number; paidOut: number; assigned: number; unassigned: number };
   autoMatchedThisMonth: number;
-  lastImport: { at: string; filename: string; source: "UPLOAD" | "DRIVE"; rowsImported: number } | null;
+  lastImport: { at: string; filename: string; source: "UPLOAD" | "DRIVE" | "API"; rowsImported: number } | null;
   accounts: { id: string; label: string; lastTxnDate: string | null; balance: number | null }[];
+  alerts: { booked: number; duplicate: number; ignored: number; lastAt: string | null };
   hasData: boolean;
   receiptsThisMonth: { customerId: string; name: string; received: number; count: number }[];
 };
@@ -225,6 +226,15 @@ export function BankClient() {
 
       {summary && !summary.hasData ? <GettingStarted onPick={() => fileInput.current?.click()} /> : null}
 
+      {summary?.alerts.lastAt ? (
+        <p className="mb-4 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs text-neutral-600">
+          Bank SMS forwarding is live · last message {timeAgo(summary.alerts.lastAt)}
+          {summary.alerts.booked ? ` · ${summary.alerts.booked} booked` : ""}
+          {summary.alerts.duplicate ? ` · ${summary.alerts.duplicate} already had` : ""}
+          {summary.alerts.ignored ? ` · ${summary.alerts.ignored} skipped` : ""} (7 din)
+        </p>
+      ) : null}
+
       {summary?.hasData ? (
         <section className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Tile
@@ -349,11 +359,20 @@ function GettingStarted({ onPick }: { onPick: () => void }) {
           payer apne aap pehchan liya jayega.
         </li>
       </ol>
-      <p className="mt-3 border-t border-neutral-100 pt-3 text-xs text-neutral-500">
-        Roz apne aap lene ke liye: bank ka scheduled statement ek Google Drive folder me girwayein aur us folder ki ID{" "}
-        <code className="rounded bg-neutral-100 px-1">GDRIVE_BANK_STATEMENT_FOLDER_ID</code> me daal dein - phir roz ki
-        sync khud utha legi.
-      </p>
+      <div className="mt-3 space-y-2 border-t border-neutral-100 pt-3 text-xs text-neutral-500">
+        <p>
+          <span className="font-semibold text-neutral-700">Apne aap, turant:</span> phone par bank ke SMS ko ek
+          forwarding app se <code className="rounded bg-neutral-100 px-1">/api/bank/ingest</code> par bhijwayein
+          (token <code className="rounded bg-neutral-100 px-1">BANK_INGEST_TOKEN</code>). Payment aate hi yahan dikh
+          jayega - statement ka intezaar nahi.
+        </p>
+        <p>
+          <span className="font-semibold text-neutral-700">Apne aap, roz:</span> bank ka scheduled statement ek Google
+          Drive folder me girwayein aur us folder ki ID{" "}
+          <code className="rounded bg-neutral-100 px-1">GDRIVE_BANK_STATEMENT_FOLDER_ID</code> me daal dein - roz ki
+          sync khud utha legi.
+        </p>
+      </div>
     </section>
   );
 }

@@ -275,16 +275,24 @@ function findAccountLast4(rows: Cell[][], headerRow: number): string | null {
   return null;
 }
 
+/** Names the bank if the text mentions one - shared with the SMS alert
+ * reader, which has only the message and its sender to go on. */
+export function detectBankName(value: string): string | null {
+  for (const bank of BANK_NAMES) {
+    const re = new RegExp(`\\b${bank.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    if (re.test(value)) return bank;
+  }
+  return null;
+}
+
 function findBankName(rows: Cell[][], headerRow: number, filename: string): string | null {
   const limit = Math.min(headerRow + 1, rows.length);
   const haystacks = [filename];
   for (let r = 0; r < limit; r++) haystacks.push(rows[r]!.map(text).filter(Boolean).join(" "));
 
   for (const hay of haystacks) {
-    for (const bank of BANK_NAMES) {
-      const re = new RegExp(`\\b${bank.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-      if (re.test(hay)) return bank;
-    }
+    const bank = detectBankName(hay);
+    if (bank) return bank;
   }
   return null;
 }

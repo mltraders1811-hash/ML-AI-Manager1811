@@ -90,18 +90,44 @@ Vyapar knows what each party was **billed**. Only the bank knows what actually
 not which customer that is. `/bank` closes that gap: it reads the statement,
 matches what it can, and asks one question about the rest - *kiska payment hai?*
 
-**Getting the statement in.** Two ways, and they dedupe against each other:
+**Getting the bank data in.** Three ways, and they all dedupe against each
+other, so you can use any combination without double-counting a payment:
 
-- **Automatic (daily).** Point `GDRIVE_BANK_STATEMENT_FOLDER_ID` at a Drive
-  folder shared with the same service account. Every morning, right after the
-  Vyapar sync, whatever is new in that folder is read and reconciled. Most
+- **Forwarded bank SMS (fastest, no Drive needed).** The phone already gets an
+  SMS the moment money lands. Point any SMS-forwarding app at
+  `POST /api/bank/ingest` with the `BANK_INGEST_TOKEN` as a bearer token, and
+  that credit is on the Bank screen seconds later - while the customer is still
+  standing there - instead of after the next statement. Set
+  `BANK_ALERT_ACCOUNTS="4471"` to book only the shop account's messages and
+  ignore every other alert the phone receives. The same endpoint takes a
+  forwarded **email** (an inbound-email service posting the message text) and a
+  **statement file** (`multipart/form-data` with `file=@statement.csv`), so a
+  laptop cron job or an email-routing rule can feed it too. See "Forwarding
+  bank alerts" below.
+- **Automatic (daily), via Drive.** Point `GDRIVE_BANK_STATEMENT_FOLDER_ID` at a
+  Drive folder shared with the same service account. Every morning, right after
+  the Vyapar sync, whatever is new in that folder is read and reconciled. Most
   net-banking portals will email or export a statement on a schedule - a Gmail
   filter that saves the attachment to Drive is enough to make this hands-off.
-  There is no transaction API to connect to here: no Indian bank offers a small
-  shop one, and the account-aggregator route needs a licensed intermediary, so
-  the scheduled statement *is* the connection.
 - **By hand.** Tap **Add statement** on the phone and pick the file. Useful the
   first time, and for a bank that won't export on a schedule.
+
+There is no bank API in any of this, deliberately: no Indian bank offers a
+small shop a transaction API, and the account-aggregator route (Setu, Finvu,
+Perfios and the like) needs a licensed intermediary and a paid contract. What
+the bank *does* already send - an SMS per transaction, and a statement on a
+schedule - is what these three paths use. (If you ever do want payments
+attributed with no reconciliation at all, the other route is a payment
+gateway's virtual accounts/UPI IDs - one per customer, so the payer is known
+by construction. That needs a merchant account and per-collection fees, and
+isn't built here.)
+
+**An alert is provisional; the statement is the record.** An SMS says how much
+arrived and usually who from, but it isn't the bank's own file - so when a
+statement covering the same day comes in, the statement line replaces the SMS
+line rather than adding to it, carrying over whichever customer you had already
+put against it. Matching is by account, amount, direction and date (a day
+either way); when both name a UTR they have to agree.
 
 CSV and `.xlsx` are read (PDF is not - download the same statement as CSV).
 There is no per-bank parser: the header row is detected and columns are mapped
@@ -134,6 +160,48 @@ underneath, a full customer search behind them, and **Payment nahi** for what
 isn't a customer payment at all. When several undecided entries share a payer,
 one tap clears them all; **Change** undoes a wrong match *and* forgets the rule
 that caused it, so the same mistake isn't repeated every month.
+
+### Forwarding bank alerts
+
+Set `BANK_INGEST_TOKEN` (`openssl rand -base64 32`) in Vercel, then check the
+endpoint from a browser:
+
+```
+https://your-app.vercel.app/api/bank/ingest?token=YOUR_TOKEN
+```
+
+It answers `{"ok":true,...}`. Then point one of these at it:
+
+- **An SMS forwarding app on the phone** (several free ones exist; any that can
+  POST a webhook will do). URL as above, method POST. Most send JSON with the
+  message in `text`/`message`/`body` and the sender in `from`/`sender`; all of
+  those key names are accepted, as are form-encoded fields and a plain-text
+  body. Filter it to your bank's sender ids (`HDFCBK`, `SBIUPI`, ...) if the app
+  can - and set `BANK_ALERT_ACCOUNTS` so a personal account's SMS is skipped
+  even if everything gets forwarded.
+- **An email rule.** Any inbound-email service that posts a webhook (Cloudflare
+  Email Routing, or a forwarding rule into one) can send the alert email's text
+  to the same URL.
+- **A laptop or a script**, posting the statement file itself:
+
+  ```bash
+  curl -X POST "https://your-app.vercel.app/api/bank/ingest" \
+    -H "Authorization: Bearer YOUR_TOKEN" \
+    -F "file=@statement.csv"
+  ```
+
+The endpoint sits outside the admin session (a forwarding app can't hold a
+login), so the token is the whole of its security: it is compared in constant
+time, must be at least 16 characters, and the endpoint returns 501 until it is
+set. It also answers `200` for a message it decides not to book - a forwarder
+that sees an error will retry the same promotional SMS for ever.
+
+Every message posted is kept in `BankAlertLog` with what happened to it and
+why, and the Bank screen shows a one-line summary ("12 booked · 3 skipped, 7
+din"), so "I got the SMS, why isn't it in the app?" has an answer. What is
+never booked: collect requests (they name a payer and an amount and have not
+been paid), OTPs, failed payments, scheduled-debit notices and promotional
+messages.
 
 **It never writes back to Vyapar's figures.** Customer balances and invoices
 are rebuilt from the Vyapar backup on every sync, so anything recorded into
@@ -313,8 +381,9 @@ button on the dashboard (see step 6).
 
 Import the repo into Vercel, set the same env vars (`DATABASE_URL`,
 `DEFAULT_COMPANY_ID`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET`)
-plus `ANTHROPIC_API_KEY` for the chat assistant. Deploy - that's it, no server
-to manage.
+plus `ANTHROPIC_API_KEY` for the chat assistant. Add `BANK_INGEST_TOKEN` (and
+optionally `BANK_ALERT_ACCOUNTS`) if you want forwarded bank SMS/emails to be
+accepted. Deploy - that's it, no server to manage.
 
 ### 6. "Sync Now" button (optional)
 

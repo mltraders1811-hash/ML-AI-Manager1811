@@ -37,6 +37,7 @@ model Company {
   bankImports      BankStatementImport[]
   bankTransactions BankTransaction[]
   bankMatchRules   BankMatchRule[]
+  bankAlerts       BankAlertLog[]
 }
 
 model Customer {
@@ -444,6 +445,17 @@ enum BankMatchSource {
 enum BankImportSource {
   UPLOAD // statement file picked from the phone
   DRIVE // statement file the bank/an automation drops in Google Drive
+  API // statement file posted to the ingest webhook by some other automation
+}
+
+/// Where a line came from. A statement is the bank's own record and is
+/// authoritative; an alert (a credit SMS or email, forwarded to the ingest
+/// webhook) arrives within seconds of the payment but is provisional - the
+/// statement line for the same payment supersedes it, carrying over whoever
+/// it was already assigned to.
+enum BankTxnOrigin {
+  STATEMENT
+  ALERT
 }
 
 model BankAccount {
@@ -534,6 +546,7 @@ model BankTransaction {
   counterparty    String?
   counterpartyKey String?
 
+  origin          BankTxnOrigin    @default(STATEMENT)
   status          BankTxnStatus    @default(UNMATCHED)
   customerId      String?
   matchedBy       BankMatchSource?
@@ -551,8 +564,11 @@ model BankTransaction {
   import   BankStatementImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
   customer Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
+  alerts BankAlertLog[]
+
   @@unique([companyId, fingerprint])
   @@index([companyId, status, txnDate])
+  @@index([companyId, origin, txnDate])
   @@index([companyId, direction, txnDate])
   @@index([companyId, customerId])
   @@index([companyId, counterpartyKey])
@@ -577,4 +593,39 @@ model BankMatchRule {
 
   @@unique([companyId, counterpartyKey])
   @@index([companyId, customerId])
+}
+
+enum BankAlertStatus {
+  BOOKED // became a transaction
+  DUPLICATE // the same payment was already known
+  IGNORED // not a payment, another account's, or not readable - reason says which
+}
+
+/// Every message posted to the ingest webhook, kept whatever happens to it.
+/// A forwarded bank SMS that silently goes nowhere is worse than no
+/// forwarding at all: without this row there is no way to answer "I got the
+/// SMS, why isn't the payment in the app?".
+model BankAlertLog {
+  id        String @id @default(uuid())
+  companyId String
+
+  receivedAt DateTime @default(now())
+  /// Sender id as the phone reported it, e.g. "AD-HDFCBK". Often the only
+  /// thing that says which bank the message is about.
+  sender     String?
+  /// The message itself, trimmed. Kept so a parse that goes wrong can be
+  /// diagnosed against the real wording rather than a guess at it.
+  body       String
+
+  status BankAlertStatus
+  /// Why it wasn't booked, in the words shown back to whoever posted it.
+  reason String?
+
+  transactionId String?
+
+  company     Company          @relation(fields: [companyId], references: [id])
+  transaction BankTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, receivedAt])
+  @@index([companyId, status, receivedAt])
 }

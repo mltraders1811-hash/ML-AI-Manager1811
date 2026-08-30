@@ -21,6 +21,14 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY: optionalEnv(z.string().optional()),
   VAPID_PRIVATE_KEY: optionalEnv(z.string().optional()),
   VAPID_SUBJECT: optionalEnv(z.string().optional()),
+  // Bearer token for /api/bank/ingest, where forwarded bank SMS and emails
+  // arrive. Absent disables that endpoint entirely rather than leaving an
+  // unauthenticated way into the books.
+  BANK_INGEST_TOKEN: optionalEnv(z.string().min(16, "BANK_INGEST_TOKEN must be at least 16 characters").optional()),
+  // Comma-separated last-4s of the accounts whose alerts to book, e.g.
+  // "4471,9920". A phone gets alerts for every account registered to its
+  // number; blank books whatever arrives.
+  BANK_ALERT_ACCOUNTS: optionalEnv(z.string().optional()),
 });
 
 const syncEnvSchema = z.object({

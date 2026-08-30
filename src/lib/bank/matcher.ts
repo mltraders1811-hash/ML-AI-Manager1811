@@ -38,6 +38,10 @@ const NOISE_TOKENS = new Set([
   "WDL", "WITHDRAWAL", "SAL", "REF", "REFNO", "RRN", "UTR", "BANK", "BANKING", "NETBANKING",
   "FT", "FUND", "FUNDS", "TXN", "TRANSACTION", "COLLECT", "COLLECTION", "SETTLEMENT", "SETL",
   "MERCHANT", "SELF", "OTHERS", "MISC", "GST", "TDS", "NA", "NIL", "OF", "FOR", "VIA", "THRU",
+  // Words that only ever appear in an SMS or email alert, never in a party's
+  // name - see alertParser.ts, which feeds its extracted segment through here.
+  "VPA", "AVL", "BAL", "BALANCE", "LINKED", "INFO", "UPDATE", "DEAR", "CUSTOMER", "ACCT", "AC",
+  "CREDITED", "DEBITED", "DEPOSITED", "RECEIVED", "SENT", "TOWARDS", "YOUR", "IS", "WAS", "HAS",
 ]);
 
 // Bank identifiers, which show up both as words and as the first four

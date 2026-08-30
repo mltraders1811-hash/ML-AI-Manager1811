@@ -29,6 +29,8 @@ export type ImportOutcome = {
   rowsDuplicate: number;
   autoMatched: number;
   needsReview: number;
+  /** Provisional SMS-alert lines replaced by the bank's own statement line. */
+  supersededAlerts: number;
   periodStart: Date | null;
   periodEnd: Date | null;
   warnings: string[];
@@ -126,7 +128,7 @@ export type ImportRequest = {
   companyId: string;
   filename: string;
   bytes: Buffer;
-  source: "UPLOAD" | "DRIVE";
+  source: "UPLOAD" | "DRIVE" | "API";
   /** Drive file id, so the daily job never reads the same file twice. */
   externalId?: string | null;
 };
@@ -226,6 +228,12 @@ export async function persistStatement(req: ImportRequest, parsed: ParsedStateme
     await prisma.bankTransaction.createMany({ data: rows, skipDuplicates: true });
   }
 
+  const supersededAlerts = await supersedeAlerts(
+    companyId,
+    account.id,
+    rows.map((r) => r.fingerprint),
+  );
+
   const updated = await prisma.bankStatementImport.update({
     where: { id: statementImport.id },
     data: {
@@ -245,8 +253,105 @@ export async function persistStatement(req: ImportRequest, parsed: ParsedStateme
     rowsDuplicate: parsed.transactions.length - rows.length,
     autoMatched,
     needsReview,
+    supersededAlerts,
     periodStart: parsed.periodStart,
     periodEnd: parsed.periodEnd,
     warnings: parsed.warnings,
   };
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+/**
+ * Drops the provisional SMS-alert lines that the statement just replaced.
+ *
+ * Without this, a shop forwarding its bank SMS *and* importing statements
+ * would count every payment twice - the whole point of the alerts being
+ * that they arrive first. An alert is matched to a statement line by
+ * account, direction, amount and date (a day either way, since a late-night
+ * payment is often dated the next day on the statement); when both name a
+ * reference they must agree.
+ *
+ * Anything the owner already decided about the alert - the customer they
+ * assigned, a note, an "not a payment" - moves onto the statement line, so
+ * the work done while waiting for the statement is not lost.
+ */
+export async function supersedeAlerts(
+  companyId: string,
+  accountId: string,
+  fingerprints: string[],
+): Promise<number> {
+  if (!fingerprints.length) return 0;
+
+  const statementRows = await prisma.bankTransaction.findMany({
+    where: { companyId, accountId, origin: "STATEMENT", fingerprint: { in: fingerprints } },
+    select: { id: true, txnDate: true, amount: true, direction: true, reference: true, status: true },
+  });
+  if (!statementRows.length) return 0;
+
+  const times = statementRows.map((r) => r.txnDate.getTime());
+  const alerts = await prisma.bankTransaction.findMany({
+    where: {
+      companyId,
+      accountId,
+      origin: "ALERT",
+      txnDate: { gte: addDays(new Date(Math.min(...times)), -1), lte: addDays(new Date(Math.max(...times)), 1) },
+    },
+    select: {
+      id: true,
+      txnDate: true,
+      amount: true,
+      direction: true,
+      reference: true,
+      status: true,
+      customerId: true,
+      matchedBy: true,
+      matchConfidence: true,
+      note: true,
+      ignoreReason: true,
+    },
+  });
+  if (!alerts.length) return 0;
+
+  const claimed = new Set<string>();
+  let superseded = 0;
+
+  for (const alert of alerts) {
+    const match = statementRows.find((row) => {
+      if (claimed.has(row.id)) return false;
+      if (row.direction !== alert.direction) return false;
+      if (Math.abs(row.amount.toNumber() - alert.amount.toNumber()) >= 0.01) return false;
+      if (Math.abs(row.txnDate.getTime() - alert.txnDate.getTime()) > 86_400_000) return false;
+      // A reference on both sides is the strongest evidence there is - and
+      // the strongest evidence against, when they disagree.
+      if (row.reference && alert.reference && row.reference !== alert.reference) return false;
+      return true;
+    });
+    if (!match) continue;
+
+    claimed.add(match.id);
+    const decided = alert.status === "MATCHED" || alert.status === "IGNORED";
+    if (decided && match.status !== "MATCHED" && match.status !== "IGNORED") {
+      await prisma.bankTransaction.update({
+        where: { id: match.id },
+        data: {
+          status: alert.status,
+          customerId: alert.customerId,
+          matchedBy: alert.matchedBy,
+          matchConfidence: alert.matchConfidence,
+          note: alert.note,
+          ignoreReason: alert.ignoreReason,
+          reconciledAt: new Date(),
+        },
+      });
+    }
+    await prisma.bankTransaction.delete({ where: { id: alert.id } });
+    superseded++;
+  }
+
+  return superseded;
 }
