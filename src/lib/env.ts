@@ -26,9 +26,13 @@ const envSchema = z.object({
   // unauthenticated way into the books.
   BANK_INGEST_TOKEN: optionalEnv(z.string().min(16, "BANK_INGEST_TOKEN must be at least 16 characters").optional()),
   // Comma-separated last-4s of the accounts whose alerts to book, e.g.
-  // "4471,9920". A phone gets alerts for every account registered to its
+  // "1811,9920". A phone gets alerts for every account registered to its
   // number; blank books whatever arrives.
   BANK_ALERT_ACCOUNTS: optionalEnv(z.string().optional()),
+  // Comma-separated bank names whose alerts to book, e.g. "ICICI". A
+  // message that doesn't identify its bank is refused while this is set;
+  // blank books whatever arrives.
+  BANK_ALERT_BANKS: optionalEnv(z.string().optional()),
 });
 
 const syncEnvSchema = z.object({

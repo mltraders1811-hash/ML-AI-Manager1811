@@ -97,9 +97,11 @@ other, so you can use any combination without double-counting a payment:
   SMS the moment money lands. Point any SMS-forwarding app at
   `POST /api/bank/ingest` with the `BANK_INGEST_TOKEN` as a bearer token, and
   that credit is on the Bank screen seconds later - while the customer is still
-  standing there - instead of after the next statement. Set
-  `BANK_ALERT_ACCOUNTS="4471"` to book only the shop account's messages and
-  ignore every other alert the phone receives. The same endpoint takes a
+  standing there - instead of after the next statement. `BANK_ALERT_BANKS` and
+  `BANK_ALERT_ACCOUNTS` narrow it to the account that matters
+  (`BANK_ALERT_BANKS="ICICI"`, `BANK_ALERT_ACCOUNTS="1811"`), so the personal
+  savings account and the other bank on the same phone stay out of the books.
+  The same endpoint takes a
   forwarded **email** (an inbound-email service posting the message text) and a
   **statement file** (`multipart/form-data` with `file=@statement.csv`), so a
   laptop cron job or an email-routing rule can feed it too. See "Forwarding
@@ -177,8 +179,8 @@ It answers `{"ok":true,...}`. Then point one of these at it:
   message in `text`/`message`/`body` and the sender in `from`/`sender`; all of
   those key names are accepted, as are form-encoded fields and a plain-text
   body. Filter it to your bank's sender ids (`HDFCBK`, `SBIUPI`, ...) if the app
-  can - and set `BANK_ALERT_ACCOUNTS` so a personal account's SMS is skipped
-  even if everything gets forwarded.
+  can - though the filters below are what actually decide, so forwarding
+  everything is fine.
 - **An email rule.** Any inbound-email service that posts a webhook (Cloudflare
   Email Routing, or a forwarding rule into one) can send the alert email's text
   to the same URL.
@@ -189,6 +191,22 @@ It answers `{"ok":true,...}`. Then point one of these at it:
     -H "Authorization: Bearer YOUR_TOKEN" \
     -F "file=@statement.csv"
   ```
+
+**Which messages get booked.** Two filters, both applied when set, both
+blank by default:
+
+| Setting | Example | Effect |
+| --- | --- | --- |
+| `BANK_ALERT_BANKS` | `ICICI` | Only that bank's messages. The bank is read from the sender id (`AD-ICICIB`) or the wording (`-ICICI Bank`); a message that names neither is refused rather than guessed at. |
+| `BANK_ALERT_ACCOUNTS` | `1811` | Only that account's messages, matched on the **common suffix** of what the message shows and what you configured. |
+
+The suffix rule matters: masking length is not consistent even within one
+bank. ICICI writes `Acct XX811` for an account ending 1811, HDFC writes
+`XXXXXX1811`. A strict comparison would silently drop every ICICI message for
+the very account being tracked. Whatever the message shows, the digits you
+configured are what gets stored, so one real account never becomes two in the
+app depending on which message opened it. Three digits is the shortest suffix
+that counts as a match.
 
 The endpoint sits outside the admin session (a forwarding app can't hold a
 login), so the token is the whole of its security: it is compared in constant

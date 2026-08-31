@@ -49,7 +49,35 @@ export type AlertIngestRequest = {
    * this business's money. Empty means book whatever arrives.
    */
   accountsLast4?: string[];
+  /**
+   * Banks to book, by name ("ICICI", "HDFC"). A message whose bank can't be
+   * told from either its sender id or its wording is refused while this is
+   * set: "probably ICICI" is not a good enough reason to book money.
+   * Empty means book whatever arrives.
+   */
+  banks?: string[];
 };
+
+/**
+ * Whether an account number in a message is one of the tracked accounts,
+ * and which tracked account it is.
+ *
+ * Masking length is not consistent even within one bank: ICICI writes "Acct
+ * XX811" for an account ending 1811, HDFC writes "XXXXXX1811". So the
+ * comparison is by common suffix, down to the shorter of the two - three
+ * digits at minimum, which is as short as any bank masks. The tracked
+ * account's own digits are what gets returned and stored, so the same real
+ * account never ends up as two accounts in the app depending on which
+ * message opened it.
+ */
+export function matchTrackedAccount(found: string, tracked: string[]): string | null {
+  for (const wanted of tracked) {
+    const length = Math.min(found.length, wanted.length);
+    if (length < 3) continue;
+    if (found.slice(-length) === wanted.slice(-length)) return wanted;
+  }
+  return null;
+}
 
 async function log(
   companyId: string,
@@ -87,23 +115,40 @@ export async function ingestAlert(req: AlertIngestRequest): Promise<AlertIngestR
   }
   const alert = parsed.alert;
 
-  const wanted = (req.accountsLast4 ?? []).filter(Boolean);
-  if (wanted.length) {
-    if (!alert.accountLast4) {
-      const reason = "Message doesn't say which account it is about";
+  const banks = (req.banks ?? []).map((b) => b.trim().toLowerCase()).filter(Boolean);
+  if (banks.length) {
+    if (!alert.bankName) {
+      const reason = "Couldn't tell which bank sent this message";
       await log(companyId, req, "IGNORED", reason, null);
       return { status: "ignored", reason };
     }
-    if (!wanted.includes(alert.accountLast4)) {
-      const reason = `For account ••${alert.accountLast4}, which isn't one of the tracked accounts`;
+    if (!banks.includes(alert.bankName.toLowerCase())) {
+      const reason = `From ${alert.bankName}, which isn't one of the tracked banks`;
       await log(companyId, req, "IGNORED", reason, null);
       return { status: "ignored", reason };
     }
   }
 
+  const tracked = (req.accountsLast4 ?? []).map((a) => a.trim()).filter(Boolean);
+  let accountLast4 = alert.accountLast4;
+  if (tracked.length) {
+    if (!accountLast4) {
+      const reason = "Message doesn't say which account it is about";
+      await log(companyId, req, "IGNORED", reason, null);
+      return { status: "ignored", reason };
+    }
+    const canonical = matchTrackedAccount(accountLast4, tracked);
+    if (!canonical) {
+      const reason = `For account ••${accountLast4}, which isn't one of the tracked accounts`;
+      await log(companyId, req, "IGNORED", reason, null);
+      return { status: "ignored", reason };
+    }
+    accountLast4 = canonical;
+  }
+
   const account = await resolveAccount(companyId, {
     bankName: alert.bankName,
-    accountLast4: alert.accountLast4,
+    accountLast4,
   });
 
   // Two separate ways the same payment can already be known: the identical

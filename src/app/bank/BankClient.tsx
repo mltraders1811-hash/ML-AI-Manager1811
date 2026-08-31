@@ -364,7 +364,9 @@ function GettingStarted({ onPick }: { onPick: () => void }) {
           <span className="font-semibold text-neutral-700">Apne aap, turant:</span> phone par bank ke SMS ko ek
           forwarding app se <code className="rounded bg-neutral-100 px-1">/api/bank/ingest</code> par bhijwayein
           (token <code className="rounded bg-neutral-100 px-1">BANK_INGEST_TOKEN</code>). Payment aate hi yahan dikh
-          jayega - statement ka intezaar nahi.
+          jayega - statement ka intezaar nahi. Sirf apne bank aur account ke message chunne ke liye{" "}
+          <code className="rounded bg-neutral-100 px-1">BANK_ALERT_BANKS</code> aur{" "}
+          <code className="rounded bg-neutral-100 px-1">BANK_ALERT_ACCOUNTS</code> set karein.
         </p>
         <p>
           <span className="font-semibold text-neutral-700">Apne aap, roz:</span> bank ka scheduled statement ek Google

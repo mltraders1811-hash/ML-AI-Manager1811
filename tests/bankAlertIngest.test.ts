@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
-import { getAlertActivity, ingestAlert } from "../src/lib/bank/alertService";
+import { getAlertActivity, ingestAlert, matchTrackedAccount } from "../src/lib/bank/alertService";
 import { assignTransaction, getBankSummary, listTransactions } from "../src/lib/bank/bankService";
 import { importStatement } from "../src/lib/bank/importService";
 import { istDateString } from "../src/lib/dateIst";
@@ -27,8 +27,8 @@ function statementDate(): string {
   return `${d}/${m}/${y}`;
 }
 
-function alert(text: string, sender = "AD-HDFCBK", accountsLast4: string[] = []) {
-  return ingestAlert({ companyId: COMPANY_ID, text, sender, accountsLast4 });
+function alert(text: string, sender = "AD-HDFCBK", accountsLast4: string[] = [], banks: string[] = []) {
+  return ingestAlert({ companyId: COMPANY_ID, text, sender, accountsLast4, banks });
 }
 
 async function addCustomer(name: string, opts: { balance?: number; billAmount?: number } = {}) {
@@ -143,6 +143,104 @@ describe("a bank SMS forwarded from the phone", () => {
     const skipped = await prisma.bankAlertLog.findFirstOrThrow({ where: { companyId: COMPANY_ID, status: "IGNORED" } });
     expect(skipped.reason).toMatch(/collect request/i);
     expect(skipped.body).toContain("collect request");
+  });
+});
+
+describe("taking only one bank's messages, for one account", () => {
+  // The shop's own setup: ICICI, account ending 1811. Everything else the
+  // phone receives - the personal HDFC account, another ICICI account - has
+  // to stay out of the books.
+  const TRACKED = ["1811"];
+  const BANKS = ["ICICI"];
+
+  beforeEach(async () => {
+    await reset();
+    await addCustomer("Sharma Traders", { balance: 48000, billAmount: 25000 });
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("books the ICICI message for that account", async () => {
+    const result = await alert(
+      `Dear Customer, Acct XX1811 is credited with Rs 25,000.00 on ${smsDate()} from SHARMA TRADERS. UPI:451203377421-ICICI Bank.`,
+      "AD-ICICIB",
+      TRACKED,
+      BANKS,
+    );
+    expect(result).toMatchObject({ status: "booked", amount: 25000, accountLabel: "ICICI ••1811" });
+  });
+
+  it("books it even when ICICI masks the account to three digits", async () => {
+    // ICICI writes "XX811" for an account ending 1811; a strict comparison
+    // would throw away every message the shop actually cares about.
+    const result = await alert(
+      `ICICI Bank Acct XX811 credited with Rs 5,000.00 on ${smsDate()}. Info: UPI/451203377/SHARMA TRADERS. Available Balance is Rs 1,25,000.00`,
+      "AD-ICICIT",
+      TRACKED,
+      BANKS,
+    );
+    expect(result).toMatchObject({ status: "booked", amount: 5000 });
+
+    // And it is the same account as the four-digit form, not a second one.
+    expect(await prisma.bankAccount.count({ where: { companyId: COMPANY_ID } })).toBe(1);
+    const account = await prisma.bankAccount.findFirstOrThrow({ where: { companyId: COMPANY_ID } });
+    expect(account.accountLast4).toBe("1811");
+  });
+
+  it("skips another ICICI account on the same phone", async () => {
+    const result = await alert(
+      `Dear Customer, Acct XX9920 is credited with Rs 9,000.00 on ${smsDate()} from Someone Else. UPI:99887766-ICICI Bank.`,
+      "AD-ICICIB",
+      TRACKED,
+      BANKS,
+    );
+    expect(result).toMatchObject({ status: "ignored" });
+    if (result.status === "ignored") expect(result.reason).toMatch(/9920/);
+    expect(await prisma.bankTransaction.count({ where: { companyId: COMPANY_ID } })).toBe(0);
+  });
+
+  it("skips another bank's message even for an account ending the same", async () => {
+    const result = await alert(
+      `Rs.7000.00 credited to a/c XXXXXX1811 on ${smsDate()} by a/c linked to VPA someone@okhdfcbank (UPI Ref No 5566778899).`,
+      "AD-HDFCBK",
+      TRACKED,
+      BANKS,
+    );
+    expect(result).toMatchObject({ status: "ignored" });
+    if (result.status === "ignored") expect(result.reason).toMatch(/HDFC/);
+  });
+
+  it("refuses a message whose bank cannot be told, rather than guessing", async () => {
+    const result = await alert(
+      `Acct XX1811 is credited with Rs 4,000.00 on ${smsDate()} from SHARMA TRADERS. Ref 123456789012`,
+      "+919812345678",
+      TRACKED,
+      BANKS,
+    );
+    expect(result).toMatchObject({ status: "ignored" });
+    if (result.status === "ignored") expect(result.reason).toMatch(/which bank/i);
+  });
+
+  it("keeps every skipped message on the record with its reason", async () => {
+    await alert(
+      `Rs.7000.00 credited to a/c XXXXXX1811 on ${smsDate()} by Someone (UPI Ref No 5566778899).`,
+      "AD-HDFCBK",
+      TRACKED,
+      BANKS,
+    );
+    const skipped = await prisma.bankAlertLog.findFirstOrThrow({ where: { companyId: COMPANY_ID } });
+    expect(skipped).toMatchObject({ status: "IGNORED", sender: "AD-HDFCBK" });
+    expect(skipped.reason).toMatch(/tracked banks/);
+  });
+
+  it("matches a masked account by its common suffix, and only that far", () => {
+    expect(matchTrackedAccount("811", ["1811"])).toBe("1811");
+    expect(matchTrackedAccount("1811", ["1811"])).toBe("1811");
+    expect(matchTrackedAccount("21811", ["1811"])).toBe("1811");
+    expect(matchTrackedAccount("9920", ["1811"])).toBeNull();
+    expect(matchTrackedAccount("11", ["1811"])).toBeNull(); // too short to mean anything
   });
 });
 

@@ -37,7 +37,9 @@ function tokenMatches(given: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-type Authorised = { ok: true; companyId: string; accountsLast4: string[] } | { ok: false; response: NextResponse };
+type Authorised =
+  | { ok: true; companyId: string; accountsLast4: string[]; banks: string[] }
+  | { ok: false; response: NextResponse };
 
 function authorise(req: NextRequest): Authorised {
   const env = getEnv();
@@ -61,6 +63,10 @@ function authorise(req: NextRequest): Authorised {
       .split(",")
       .map((s) => s.replace(/\D/g, "").slice(-4))
       .filter(Boolean),
+    banks: (env.BANK_ALERT_BANKS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
   };
 }
 
@@ -68,7 +74,11 @@ function authorise(req: NextRequest): Authorised {
 export async function GET(req: NextRequest) {
   const auth = authorise(req);
   if (!auth.ok) return auth.response;
-  return NextResponse.json({ ok: true, tracking: auth.accountsLast4.length ? auth.accountsLast4 : "all accounts" });
+  return NextResponse.json({
+    ok: true,
+    banks: auth.banks.length ? auth.banks : "all banks",
+    accounts: auth.accountsLast4.length ? auth.accountsLast4 : "all accounts",
+  });
 }
 
 /** Pulls the message text out of whatever shape the forwarder posts. */
@@ -138,7 +148,7 @@ export async function POST(req: NextRequest) {
 }
 
 async function alertResponse(
-  auth: { companyId: string; accountsLast4: string[] },
+  auth: { companyId: string; accountsLast4: string[]; banks: string[] },
   payload: Record<string, unknown>,
   req: NextRequest,
 ): Promise<NextResponse> {
@@ -159,6 +169,7 @@ async function alertResponse(
     sender: pickSender(payload) ?? req.nextUrl.searchParams.get("sender"),
     receivedAt: receivedAt && !Number.isNaN(receivedAt.getTime()) ? receivedAt : undefined,
     accountsLast4: auth.accountsLast4,
+    banks: auth.banks,
   });
 
   // Always 200, including for a message that was ignored: a forwarding app
