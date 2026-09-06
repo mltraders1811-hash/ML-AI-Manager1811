@@ -103,6 +103,9 @@ only way the shop uses this; not needed for the SMS feature.
 
 ## Working on it
 
+The Capacitor CLI needs **Node 22 or newer** (the web app itself is happy on
+20, which is why CI builds the two with different versions).
+
 ```bash
 npm run android:sync      # copy config into the Android project
 npm run android:test      # the on-phone filter's unit tests

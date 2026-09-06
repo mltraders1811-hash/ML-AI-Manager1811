@@ -33,9 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 22, not the 20 the web CI uses: the Capacitor CLI refuses to run on
+      # anything older, and the Android build is the only thing that needs it.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: "npm"
 
       - uses: actions/setup-java@v4
