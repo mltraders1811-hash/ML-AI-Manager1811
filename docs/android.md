@@ -56,10 +56,25 @@ are the actual one:
    same version. Uninstall the old one first; nothing is lost but the login.
 3. **Play Protect blocked it.** "Install anyway" on the prompt, or turn the
    scan off for the install and back on afterwards.
-4. **The phone is older than the app allows.** The build needs Android 7
+4. **The phone's own security app blocked it.** Xiaomi, Realme, Oppo and Vivo
+   phones refuse sideloads with this exact wording and no other explanation:
+   - **Xiaomi / MIUI / HyperOS**: Settings → Privacy protection → Special
+     permissions → Install unknown apps → allow for the app you are
+     installing *from* (Files, Chrome). If it still refuses, Security app →
+     Settings → turn off "Scan apps before installing". A Mi account signed
+     in and a working connection are sometimes required for its check to
+     pass at all.
+   - **Realme / Oppo (ColorOS)**: Settings → Password & security → System
+     security → Install external sources.
+   - **Vivo (Funtouch)**: i Manager → Software install permissions.
+   - **Samsung**: the "unknown apps" prompt is per-app and appears on the
+     first attempt; if it never appeared, the browser or file manager was
+     denied earlier and needs re-allowing in Settings → Apps → Special
+     access.
+5. **The phone is older than the app allows.** The build needs Android 7
    (SDK 24) or newer; every build's summary prints the package, version and
    minimum SDK for exactly this check.
-5. **The download was incomplete** - reinstall from a fresh download.
+6. **The download was incomplete** - reinstall from a fresh download.
 
 Note that Expo Go cannot open this app. Expo Go runs React Native bundles
 from Expo projects; this is a web app in a Capacitor shell with its own

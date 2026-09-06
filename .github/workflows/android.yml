@@ -93,7 +93,13 @@ jobs:
 
       - name: Name the APK
         id: apk
-        run: echo "path=$(find android/app/build/outputs/apk -name '*.apk' | head -1)" >> "$GITHUB_OUTPUT"
+        run: |
+          BUILT=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          # "app-debug.apk" tells nobody what it is; this is the name that
+          # comes out of the downloaded archive and gets tapped on a phone.
+          NAMED="ml-manager-${{ github.run_number }}.apk"
+          cp "$BUILT" "$NAMED"
+          echo "path=$NAMED" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -110,9 +116,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cp "${{ steps.apk.outputs.path }}" "ml-manager-${{ github.ref_name }}.apk"
+          # The tag can arrive either way round: pushed from a terminal (no
+          # release yet), or created by publishing a release in the web UI
+          # (release already exists). Handle both, rather than failing on the
+          # one someone is most likely to use from a phone.
           gh release create "${{ github.ref_name }}" "ml-manager-${{ github.ref_name }}.apk" \
             --title "M.L Manager ${{ github.ref_name }}" \
-            --notes "Open this .apk on the phone to install. Allow installing from this source when Android asks."
+            --notes "Open this .apk on the phone to install. Allow installing from this source when Android asks." \
+            || gh release upload "${{ github.ref_name }}" "ml-manager-${{ github.ref_name }}.apk" --clobber
 
       # What the phone will actually check before installing: the package it
       # would replace, the version, and the Android it needs. When an install
