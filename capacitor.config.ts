@@ -9,7 +9,23 @@ import type { CapacitorConfig } from "@capacitor/cli";
 //
 // MOBILE_APP_URL is read at build time so a debug build can point at a
 // preview deployment or a laptop's dev server.
-const appUrl = process.env.MOBILE_APP_URL ?? "https://ml-ai-manager1811.vercel.app";
+//
+// A variable that is declared but not set arrives as the empty string, not
+// as undefined - a workflow expanding an unset `vars.MOBILE_APP_URL` does
+// exactly that - and `??` would keep it, leaving the app pointed at "". The
+// same trap the server's env parsing guards against; see optionalEnv in
+// src/lib/env.ts.
+const configured = process.env.MOBILE_APP_URL?.trim();
+const appUrl = configured ? configured : "https://ml-ai-manager1811.vercel.app";
+
+/** The URL is the whole app, so a broken one must fail loudly and by name. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    throw new Error(`MOBILE_APP_URL is not a valid URL: ${JSON.stringify(url)} (it needs the https:// too)`);
+  }
+}
 
 const config: CapacitorConfig = {
   appId: "in.mlaimanager.app",
@@ -22,7 +38,7 @@ const config: CapacitorConfig = {
     // Anything not on this host - a wa.me reminder link above all - opens in
     // the phone's own browser or WhatsApp instead of being trapped in the
     // app's WebView.
-    allowNavigation: [new URL(appUrl).host],
+    allowNavigation: [hostOf(appUrl)],
     androidScheme: "https",
     // Shown instead of Chrome's "webpage not available" when the phone has
     // no connection; the page says so in the owner's own words.
