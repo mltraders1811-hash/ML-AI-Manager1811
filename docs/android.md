@@ -54,8 +54,16 @@ are the actual one:
 2. **A copy is already installed with a different signature.** A debug-signed
    build and a release-signed one are different apps to Android even at the
    same version. Uninstall the old one first; nothing is lost but the login.
-3. **Play Protect blocked it.** "Install anyway" on the prompt, or turn the
-   scan off for the install and back on afterwards.
+3. **Play Protect blocked it** - the likeliest cause for *this* app, and
+   separate from anything in step 4. Play Protect treats an app that asks
+   for SMS permissions and did not come from a store as high-risk, and this
+   app asks for exactly that (it is the whole point of it). It often refuses
+   with the same bare "App not installed" rather than saying so.
+
+   Play Store → profile picture (top right) → Play Protect → gear icon →
+   turn off **Scan apps with Play Protect** → install → turn it back on
+   afterwards. On a Samsung this is a different switch from Auto Blocker and
+   both have to be out of the way.
 4. **The phone's own security app blocked it.** Xiaomi, Realme, Oppo and Vivo
    phones refuse sideloads with this exact wording and no other explanation:
    - **Xiaomi / MIUI / HyperOS**: Settings → Privacy protection → Special
