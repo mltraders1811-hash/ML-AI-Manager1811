@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { NativePushNote } from "@/components/NativePushNote";
 import { NotificationToggle } from "@/components/NotificationToggle";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ export default function NotificationSettingsPage() {
           Dashboard
         </Link>
       </header>
+
+      <NativePushNote />
 
       <NotificationToggle />
 

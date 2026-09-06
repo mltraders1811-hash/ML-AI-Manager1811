@@ -1,0 +1,111 @@
+name: Android app
+
+# Builds the installable APK. The Android SDK is not something the app
+# repository needs on a laptop, so this is the normal way to get a build:
+# run the workflow, download the APK from its artifacts, install it on the
+# phone.
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "URL the app should open (leave blank for production)"
+        required: false
+        default: ""
+  push:
+    tags: ["android-v*"]
+  pull_request:
+    paths:
+      - "android/**"
+      - "capacitor.config.ts"
+      - "android-shell/**"
+      - ".github/workflows/android.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # A step's `if` cannot read the secrets context, so the one thing it
+    # needs to know - whether a signing key exists - is lifted into env here.
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+
+      - name: Copy the web config into the Android project
+        run: npx cap sync android
+        env:
+          MOBILE_APP_URL: ${{ github.event.inputs.app_url || vars.MOBILE_APP_URL }}
+
+      # The rules deciding which of someone's messages leave their phone are
+      # plain Java for exactly this reason - they are checked on every build.
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+        working-directory: android
+
+      # A tagged build is signed with the shop's own key so the phone accepts
+      # it as an update to the app already installed. Without the secrets
+      # (a PR, a first run) it still produces an installable debug APK.
+      - name: Restore the signing key
+        if: env.HAS_KEYSTORE == 'true'
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.jks
+          cat > android/keystore.properties <<EOF
+          storeFile=app/release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Build
+        run: |
+          if [ -f keystore.properties ]; then
+            ./gradlew --no-daemon assembleRelease
+          else
+            ./gradlew --no-daemon assembleDebug
+          fi
+        working-directory: android
+        env:
+          # A version a phone will accept as newer than the one it has.
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('0.{0}', github.run_number) }}
+
+      - name: Name the APK
+        id: apk
+        run: echo "path=$(find android/app/build/outputs/apk -name '*.apk' | head -1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ml-manager-${{ github.run_number }}
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 90
+
+      - name: Say what was built
+        run: |
+          {
+            echo "### Android app built"
+            echo ""
+            echo "Download the APK from this run's artifacts, then open it on the phone to install."
+            echo ""
+            echo "- Points at: \`${{ github.event.inputs.app_url || vars.MOBILE_APP_URL || 'the production URL in capacitor.config.ts' }}\`"
+            if [ "$HAS_KEYSTORE" = "true" ]; then
+              echo "- Signed with the release key"
+            else
+              echo "- Debug-signed (no ANDROID_KEYSTORE_BASE64 secret): fine for testing, but a later signed build installs as a different app"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

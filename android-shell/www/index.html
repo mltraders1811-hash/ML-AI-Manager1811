@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>M.L Manager</title>
+    <style>
+      body {
+        margin: 0;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        background: #fafaf9;
+        color: #171717;
+        font: 15px/1.5 system-ui, sans-serif;
+        text-align: center;
+        padding: 24px;
+      }
+      h1 { font-size: 17px; margin: 0 0 8px; }
+      p { color: #737373; margin: 0; max-width: 22rem; }
+    </style>
+  </head>
+  <body>
+    <!--
+      Shown only when the phone cannot reach the server at all. The app
+      itself lives at the URL in capacitor.config.ts; this page exists
+      because Capacitor requires a local webDir, and it is better for that
+      requirement to be met by something honest than by a blank screen.
+    -->
+    <div>
+      <h1>Internet nahi mil raha</h1>
+      <p>M.L Manager ke numbers server se aate hain. Internet aane par app khud khul jayegi.</p>
+    </div>
+  </body>
+</html>

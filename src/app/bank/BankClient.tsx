@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { formatInr } from "@/lib/format";
+import { isNativeApp } from "@/lib/native";
 
 type Suggestion = { customerId: string; name: string; confidence: number; reasons: string[] };
 
@@ -84,7 +85,14 @@ export function BankClient() {
   const [applySimilar, setApplySimilar] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState("");
+  // Only true inside the Android app, and only known after mount - the
+  // bridge is injected by the shell, not rendered on the server.
+  const [native, setNative] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setNative(isNativeApp());
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -205,6 +213,14 @@ export function BankClient() {
           >
             {uploading ? "Reading…" : "Add statement"}
           </button>
+          {native ? (
+            <Link
+              href="/settings/android"
+              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100"
+            >
+              SMS
+            </Link>
+          ) : null}
           <Link
             href="/"
             className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-600 transition hover:bg-neutral-100"
@@ -224,7 +240,9 @@ export function BankClient() {
         <p className="mb-4 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-700">{flash}</p>
       ) : null}
 
-      {summary && !summary.hasData ? <GettingStarted onPick={() => fileInput.current?.click()} /> : null}
+      {summary && !summary.hasData ? (
+        <GettingStarted onPick={() => fileInput.current?.click()} native={native} />
+      ) : null}
 
       {summary?.alerts.lastAt ? (
         <p className="mb-4 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs text-neutral-600">
@@ -338,7 +356,7 @@ function Tile({
   );
 }
 
-function GettingStarted({ onPick }: { onPick: () => void }) {
+function GettingStarted({ onPick, native }: { onPick: () => void; native: boolean }) {
   return (
     <section className="mb-5 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
       <h2 className="text-sm font-bold text-neutral-900">Bank ko jodein</h2>
@@ -360,6 +378,15 @@ function GettingStarted({ onPick }: { onPick: () => void }) {
         </li>
       </ol>
       <div className="mt-3 space-y-2 border-t border-neutral-100 pt-3 text-xs text-neutral-500">
+        {native ? (
+          <p>
+            <span className="font-semibold text-neutral-700">Is app me:</span>{" "}
+            <Link href="/settings/android" className="font-semibold text-brand underline">
+              Bank SMS
+            </Link>{" "}
+            screen par jaakar ijazat dein - phir har payment ka SMS apne aap yahan aa jayega.
+          </p>
+        ) : null}
         <p>
           <span className="font-semibold text-neutral-700">Apne aap, turant:</span> phone par bank ke SMS ko ek
           forwarding app se <code className="rounded bg-neutral-100 px-1">/api/bank/ingest</code> par bhijwayein

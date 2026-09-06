@@ -22,7 +22,9 @@ The same job then reads any new **bank statement** dropped in a second Drive
 folder and reconciles it against those customers - see Bank reconciliation below.
 
 The Next.js app reads from that Postgres database to power the dashboard,
-WhatsApp reminder links, and the AI chat assistant.
+WhatsApp reminder links, and the AI chat assistant - in a browser, or through
+the Android app (see below), which is the same deployment in a shell that can
+read the bank's SMS off the phone.
 
 ## Collections (`/overdue`, `/customers`)
 
@@ -269,6 +271,25 @@ Google Drive (.vyb)  --daily-->  GitHub Actions job  --sync-->  Postgres  <--rea
 Deliberately split this way: the sync pipeline uses native/Node-only
 packages (`better-sqlite3`, `adm-zip`, `googleapis`) that don't belong in a
 Vercel serverless bundle, so it runs as a plain scheduled script instead.
+
+## Android app
+
+The same app installed as an app, and the reason it exists: it reads the
+bank's SMS itself, so a payment appears on the Bank screen seconds after it
+lands rather than after the next statement. A Capacitor shell around the same
+deployment - one codebase, one deploy, no version that can quietly serve
+month-old screens.
+
+Build it from Actions → *Android app*, install the APK, then set it up at
+*Bank → SMS* in three taps (permission, connect, test). Only messages that
+pass a filter running on the phone - right bank, right account, looks like a
+transaction - ever leave the device; that filter is plain Java with unit tests
+CI runs on every build.
+
+Not on the Play Store on purpose: Google grants `RECEIVE_SMS` only to default
+SMS/dialer apps, so a Play release would mean dropping the one thing the app
+is for. Full setup, signing and the push-notification caveat:
+[docs/android.md](docs/android.md).
 
 ## Vyapar column mapping
 
