@@ -67,10 +67,14 @@ are the actual one:
    - **Realme / Oppo (ColorOS)**: Settings → Password & security → System
      security → Install external sources.
    - **Vivo (Funtouch)**: i Manager → Software install permissions.
-   - **Samsung**: the "unknown apps" prompt is per-app and appears on the
-     first attempt; if it never appeared, the browser or file manager was
-     denied earlier and needs re-allowing in Settings → Apps → Special
-     access.
+   - **Samsung (One UI 6.1 and newer, so any S24/S25)**: **Auto Blocker** is
+     the usual culprit and it is on by default on newer devices - Settings →
+     Security and privacy → Auto Blocker → turn it off (or turn off "Block
+     app installs from unauthorised sources" inside it). It refuses the
+     install with the same bare "App not installed" and no mention of
+     itself. Also check Settings → Apps → Special access → Install unknown
+     apps, and allow whichever app you are opening the file from (My Files,
+     Chrome).
 5. **The phone is older than the app allows.** The build needs Android 7
    (SDK 24) or newer; every build's summary prints the package, version and
    minimum SDK for exactly this check.

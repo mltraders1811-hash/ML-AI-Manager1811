@@ -126,18 +126,27 @@ jobs:
             || gh release upload "${{ github.ref_name }}" "ml-manager-${{ github.ref_name }}.apk" --clobber
 
       # What the phone will actually check before installing: the package it
-      # would replace, the version, and the Android it needs. When an install
-      # is refused, the answer is nearly always one of these three.
-      - name: Describe the APK
+      # would replace, the version, the Android it needs - and above all
+      # whether the signature verifies. An APK that fails this is refused
+      # with the same unhelpful "App not installed" as a phone-side block,
+      # so the build says which of the two it is rather than leaving it to
+      # be guessed at from the other end.
+      - name: Describe and verify the APK
         id: badging
         run: |
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -r | head -1)
+          SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -r | head -1)
           "$AAPT" dump badging "${{ steps.apk.outputs.path }}" > badging.txt 2>/dev/null || true
+          "$SIGNER" verify --verbose "${{ steps.apk.outputs.path }}" > signing.txt 2>&1 || true
           {
-            echo "package=$(grep -o "package: name='[^']*'" badging.txt | head -1 | cut -d"'" -f2)"
-            echo "version=$(grep -o "versionName='[^']*'" badging.txt | head -1 | cut -d"'" -f2)"
-            echo "minsdk=$(grep -o "sdkVersion:'[^']*'" badging.txt | head -1 | cut -d"'" -f2)"
+            echo "package=$(grep -o "package: name='[^']*'" badging.txt | head -1 | cut -d\' -f2)"
+            echo "version=$(grep -o "versionName='[^']*'" badging.txt | head -1 | cut -d\' -f2)"
+            echo "minsdk=$(grep -o "sdkVersion:'[^']*'" badging.txt | head -1 | cut -d\' -f2)"
+            echo "targetsdk=$(grep -o "targetSdkVersion:'[^']*'" badging.txt | head -1 | cut -d\' -f2)"
+            echo "verified=$(grep -c 'Verified using v2 scheme\|Verified using v3 scheme' signing.txt || echo 0)"
+            echo "size=$(du -h '${{ steps.apk.outputs.path }}' | cut -f1)"
           } >> "$GITHUB_OUTPUT"
+          echo "--- apksigner ---"; cat signing.txt
 
       - name: Say what was built
         run: |
@@ -153,7 +162,13 @@ jobs:
             fi
             echo ""
             echo "- Points at: \`${{ github.event.inputs.app_url || vars.MOBILE_APP_URL || 'the production URL in capacitor.config.ts' }}\`"
-            echo "- Package: \`${{ steps.badging.outputs.package }}\` · version \`${{ steps.badging.outputs.version }}\` · needs Android SDK ${{ steps.badging.outputs.minsdk }}+"
+            echo "- Package: \`${{ steps.badging.outputs.package }}\` · version \`${{ steps.badging.outputs.version }}\` · ${{ steps.badging.outputs.size }}"
+            echo "- Runs on Android SDK ${{ steps.badging.outputs.minsdk }}+ (targets ${{ steps.badging.outputs.targetsdk }})"
+            if [ "${{ steps.badging.outputs.verified }}" != "0" ]; then
+              echo "- Signature verifies (v2/v3) - if a phone still refuses this file, the block is on the phone, not in the APK"
+            else
+              echo "- **Signature did NOT verify** - this APK cannot install anywhere; see the apksigner output in the build log"
+            fi
             if [ "$HAS_KEYSTORE" = "true" ]; then
               echo "- Signed with the release key"
             else
