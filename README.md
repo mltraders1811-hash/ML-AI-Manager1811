@@ -521,6 +521,23 @@ Run a sync manually against a real backup once Drive access is set up:
 npm run sync
 ```
 
+### Documentation lookups (Context7)
+
+`.mcp.json` registers the [Context7](https://context7.com) MCP server, which
+gives Claude Code up-to-date docs for the libraries this project uses (Next.js,
+Prisma, Tailwind) instead of whatever it remembers from training. Claude Code
+picks it up automatically when you open this repo - approve the server on first
+run, then add "use context7" to a prompt when you want it consulted.
+
+It works without an account at a lower rate limit. For a higher one, grab a free
+key at context7.com/dashboard and register the server for yourself instead of
+relying on the checked-in entry:
+
+```bash
+claude mcp add --transport http context7 https://mcp.context7.com/mcp \
+  -H "Authorization: Bearer YOUR_API_KEY" --scope user
+```
+
 ## Multi-tenancy
 
 Every business table (`Customer`, `Invoice`, `InvoiceLineItem`,
