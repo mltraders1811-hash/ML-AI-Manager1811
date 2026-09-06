@@ -41,6 +41,30 @@ installed directly instead, which is normal for a business's own app.
 `BANK_INGEST_TOKEN` must be set on the server first, or step 2 of that screen
 will say so.
 
+### "App not installed"
+
+Android says this for several unrelated reasons; in order of how often they
+are the actual one:
+
+1. **You tried to install the zip.** Every GitHub Actions artifact downloads
+   as a `.zip`, and a phone cannot install one. Unzip it and install the
+   `.apk` inside - or push a tag (`git tag android-v1 && git push --tags`),
+   which publishes the `.apk` straight onto a release, so the phone downloads
+   something it can open directly.
+2. **A copy is already installed with a different signature.** A debug-signed
+   build and a release-signed one are different apps to Android even at the
+   same version. Uninstall the old one first; nothing is lost but the login.
+3. **Play Protect blocked it.** "Install anyway" on the prompt, or turn the
+   scan off for the install and back on afterwards.
+4. **The phone is older than the app allows.** The build needs Android 7
+   (SDK 24) or newer; every build's summary prints the package, version and
+   minimum SDK for exactly this check.
+5. **The download was incomplete** - reinstall from a fresh download.
+
+Note that Expo Go cannot open this app. Expo Go runs React Native bundles
+from Expo projects; this is a web app in a Capacitor shell with its own
+native Java, and neither half is something Expo Go can load.
+
 ## Signing
 
 Without a signing key the workflow still produces an installable APK, signed

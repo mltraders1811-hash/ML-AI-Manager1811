@@ -25,6 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
+    # Only so a tagged build can attach its APK to a release.
+    permissions:
+      contents: write
+
     # A step's `if` cannot read the secrets context, so the one thing it
     # needs to know - whether a signing key exists - is lifted into env here.
     env:
@@ -97,14 +101,48 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           retention-days: 90
 
+      # A phone cannot install a zip, and every Actions artifact is one. A
+      # release asset downloads as the .apk itself, which is the difference
+      # between "tap the link, install" and "App not installed".
+      - name: Publish a directly-installable APK
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp "${{ steps.apk.outputs.path }}" "ml-manager-${{ github.ref_name }}.apk"
+          gh release create "${{ github.ref_name }}" "ml-manager-${{ github.ref_name }}.apk" \
+            --title "M.L Manager ${{ github.ref_name }}" \
+            --notes "Open this .apk on the phone to install. Allow installing from this source when Android asks."
+
+      # What the phone will actually check before installing: the package it
+      # would replace, the version, and the Android it needs. When an install
+      # is refused, the answer is nearly always one of these three.
+      - name: Describe the APK
+        id: badging
+        run: |
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -r | head -1)
+          "$AAPT" dump badging "${{ steps.apk.outputs.path }}" > badging.txt 2>/dev/null || true
+          {
+            echo "package=$(grep -o "package: name='[^']*'" badging.txt | head -1 | cut -d"'" -f2)"
+            echo "version=$(grep -o "versionName='[^']*'" badging.txt | head -1 | cut -d"'" -f2)"
+            echo "minsdk=$(grep -o "sdkVersion:'[^']*'" badging.txt | head -1 | cut -d"'" -f2)"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Say what was built
         run: |
           {
             echo "### Android app built"
             echo ""
-            echo "Download the APK from this run's artifacts, then open it on the phone to install."
+            if [ "${{ github.ref_type }}" = "tag" ]; then
+              echo "Installable APK is on the [release](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}) - open that link on the phone and tap the .apk."
+            else
+              echo "**Download it from Artifacts below, then unzip it** - GitHub wraps every artifact in a .zip, and a phone cannot install a zip (it answers \"App not installed\"). Install the .apk inside."
+              echo ""
+              echo "To skip the unzipping, push a tag (\`git tag android-v1 && git push --tags\`): tagged builds publish the .apk straight onto a release."
+            fi
             echo ""
             echo "- Points at: \`${{ github.event.inputs.app_url || vars.MOBILE_APP_URL || 'the production URL in capacitor.config.ts' }}\`"
+            echo "- Package: \`${{ steps.badging.outputs.package }}\` · version \`${{ steps.badging.outputs.version }}\` · needs Android SDK ${{ steps.badging.outputs.minsdk }}+"
             if [ "$HAS_KEYSTORE" = "true" ]; then
               echo "- Signed with the release key"
             else
