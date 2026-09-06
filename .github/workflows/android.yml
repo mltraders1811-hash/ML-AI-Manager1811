@@ -134,6 +134,16 @@ jobs:
       - name: Describe and verify the APK
         id: badging
         run: |
+          # aapt2 writes "minSdkVersion:'24'"; older ones wrote "sdkVersion:'24'".
+          # Matching only the old spelling silently produced a blank, which is
+          # a poor showing for a line whose whole job is to explain a refused
+          # install.
+          minsdk_of() {
+            local found
+            found=$(grep -o "minSdkVersion:'[^']*'" "$1" | head -1 | cut -d\' -f2)
+            [ -n "$found" ] || found=$(grep -o "^sdkVersion:'[^']*'" "$1" | head -1 | cut -d\' -f2)
+            echo "$found"
+          }
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -r | head -1)
           SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -r | head -1)
           "$AAPT" dump badging "${{ steps.apk.outputs.path }}" > badging.txt 2>/dev/null || true
@@ -141,7 +151,7 @@ jobs:
           {
             echo "package=$(grep -o "package: name='[^']*'" badging.txt | head -1 | cut -d\' -f2)"
             echo "version=$(grep -o "versionName='[^']*'" badging.txt | head -1 | cut -d\' -f2)"
-            echo "minsdk=$(grep -o "sdkVersion:'[^']*'" badging.txt | head -1 | cut -d\' -f2)"
+            echo "minsdk=$(minsdk_of badging.txt)"
             echo "targetsdk=$(grep -o "targetSdkVersion:'[^']*'" badging.txt | head -1 | cut -d\' -f2)"
             echo "verified=$(grep -c 'Verified using v2 scheme\|Verified using v3 scheme' signing.txt || echo 0)"
             echo "size=$(du -h '${{ steps.apk.outputs.path }}' | cut -f1)"
