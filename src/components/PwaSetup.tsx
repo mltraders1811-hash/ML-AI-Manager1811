@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { isNativeApp } from "@/lib/native";
+
 /** Chrome's install event isn't in the DOM lib yet. */
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -42,6 +44,11 @@ export function PwaSetup() {
   const [showIosHint, setShowIosHint] = useState(false);
 
   useEffect(() => {
+    // Inside the Android app there is nothing to install and nothing for a
+    // service worker to do: the shell is already installed, and a worker
+    // caching pages underneath the WebView would only add a second, staler
+    // copy of screens that must show today's money.
+    if (isNativeApp()) return;
     if (!("serviceWorker" in navigator)) return;
     // Registering after load keeps the worker's own fetches from competing
     // with the page's on a slow connection.
@@ -55,6 +62,7 @@ export function PwaSetup() {
   }, []);
 
   useEffect(() => {
+    if (isNativeApp()) return;
     if (isStandalone()) return;
     if (localStorage.getItem(DISMISSED_KEY) === "1") return;
 

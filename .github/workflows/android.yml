@@ -1,0 +1,187 @@
+name: Android app
+
+# Builds the installable APK. The Android SDK is not something the app
+# repository needs on a laptop, so this is the normal way to get a build:
+# run the workflow, download the APK from its artifacts, install it on the
+# phone.
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "URL the app should open (leave blank for production)"
+        required: false
+        default: ""
+  push:
+    tags: ["android-v*"]
+  pull_request:
+    paths:
+      - "android/**"
+      - "capacitor.config.ts"
+      - "android-shell/**"
+      - ".github/workflows/android.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # Only so a tagged build can attach its APK to a release.
+    permissions:
+      contents: write
+
+    # A step's `if` cannot read the secrets context, so the one thing it
+    # needs to know - whether a signing key exists - is lifted into env here.
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 22, not the 20 the web CI uses: the Capacitor CLI refuses to run on
+      # anything older, and the Android build is the only thing that needs it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+
+      - name: Copy the web config into the Android project
+        run: npx cap sync android
+        env:
+          MOBILE_APP_URL: ${{ github.event.inputs.app_url || vars.MOBILE_APP_URL }}
+
+      # The rules deciding which of someone's messages leave their phone are
+      # plain Java for exactly this reason - they are checked on every build.
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+        working-directory: android
+
+      # A tagged build is signed with the shop's own key so the phone accepts
+      # it as an update to the app already installed. Without the secrets
+      # (a PR, a first run) it still produces an installable debug APK.
+      - name: Restore the signing key
+        if: env.HAS_KEYSTORE == 'true'
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.jks
+          cat > android/keystore.properties <<EOF
+          storeFile=app/release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Build
+        run: |
+          if [ -f keystore.properties ]; then
+            ./gradlew --no-daemon assembleRelease
+          else
+            ./gradlew --no-daemon assembleDebug
+          fi
+        working-directory: android
+        env:
+          # A version a phone will accept as newer than the one it has.
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('0.{0}', github.run_number) }}
+
+      - name: Name the APK
+        id: apk
+        run: |
+          BUILT=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          # "app-debug.apk" tells nobody what it is; this is the name that
+          # comes out of the downloaded archive and gets tapped on a phone.
+          NAMED="ml-manager-${{ github.run_number }}.apk"
+          cp "$BUILT" "$NAMED"
+          echo "path=$NAMED" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ml-manager-${{ github.run_number }}
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 90
+
+      # A phone cannot install a zip, and every Actions artifact is one. A
+      # release asset downloads as the .apk itself, which is the difference
+      # between "tap the link, install" and "App not installed".
+      - name: Publish a directly-installable APK
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp "${{ steps.apk.outputs.path }}" "ml-manager-${{ github.ref_name }}.apk"
+          # The tag can arrive either way round: pushed from a terminal (no
+          # release yet), or created by publishing a release in the web UI
+          # (release already exists). Handle both, rather than failing on the
+          # one someone is most likely to use from a phone.
+          gh release create "${{ github.ref_name }}" "ml-manager-${{ github.ref_name }}.apk" \
+            --title "M.L Manager ${{ github.ref_name }}" \
+            --notes "Open this .apk on the phone to install. Allow installing from this source when Android asks." \
+            || gh release upload "${{ github.ref_name }}" "ml-manager-${{ github.ref_name }}.apk" --clobber
+
+      # What the phone will actually check before installing: the package it
+      # would replace, the version, the Android it needs - and above all
+      # whether the signature verifies. An APK that fails this is refused
+      # with the same unhelpful "App not installed" as a phone-side block,
+      # so the build says which of the two it is rather than leaving it to
+      # be guessed at from the other end.
+      - name: Describe and verify the APK
+        id: badging
+        run: |
+          # aapt2 writes "minSdkVersion:'24'"; older ones wrote "sdkVersion:'24'".
+          # Matching only the old spelling silently produced a blank, which is
+          # a poor showing for a line whose whole job is to explain a refused
+          # install.
+          minsdk_of() {
+            local found
+            found=$(grep -o "minSdkVersion:'[^']*'" "$1" | head -1 | cut -d\' -f2)
+            [ -n "$found" ] || found=$(grep -o "^sdkVersion:'[^']*'" "$1" | head -1 | cut -d\' -f2)
+            echo "$found"
+          }
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort -r | head -1)
+          SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -r | head -1)
+          "$AAPT" dump badging "${{ steps.apk.outputs.path }}" > badging.txt 2>/dev/null || true
+          "$SIGNER" verify --verbose "${{ steps.apk.outputs.path }}" > signing.txt 2>&1 || true
+          {
+            echo "package=$(grep -o "package: name='[^']*'" badging.txt | head -1 | cut -d\' -f2)"
+            echo "version=$(grep -o "versionName='[^']*'" badging.txt | head -1 | cut -d\' -f2)"
+            echo "minsdk=$(minsdk_of badging.txt)"
+            echo "targetsdk=$(grep -o "targetSdkVersion:'[^']*'" badging.txt | head -1 | cut -d\' -f2)"
+            echo "verified=$(grep -c 'Verified using v2 scheme\|Verified using v3 scheme' signing.txt || echo 0)"
+            echo "size=$(du -h '${{ steps.apk.outputs.path }}' | cut -f1)"
+          } >> "$GITHUB_OUTPUT"
+          echo "--- apksigner ---"; cat signing.txt
+
+      - name: Say what was built
+        run: |
+          {
+            echo "### Android app built"
+            echo ""
+            if [ "${{ github.ref_type }}" = "tag" ]; then
+              echo "Installable APK is on the [release](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}) - open that link on the phone and tap the .apk."
+            else
+              echo "**Download it from Artifacts below, then unzip it** - GitHub wraps every artifact in a .zip, and a phone cannot install a zip (it answers \"App not installed\"). Install the .apk inside."
+              echo ""
+              echo "To skip the unzipping, push a tag (\`git tag android-v1 && git push --tags\`): tagged builds publish the .apk straight onto a release."
+            fi
+            echo ""
+            echo "- Points at: \`${{ github.event.inputs.app_url || vars.MOBILE_APP_URL || 'the production URL in capacitor.config.ts' }}\`"
+            echo "- Package: \`${{ steps.badging.outputs.package }}\` · version \`${{ steps.badging.outputs.version }}\` · ${{ steps.badging.outputs.size }}"
+            echo "- Runs on Android SDK ${{ steps.badging.outputs.minsdk }}+ (targets ${{ steps.badging.outputs.targetsdk }})"
+            if [ "${{ steps.badging.outputs.verified }}" != "0" ]; then
+              echo "- Signature verifies (v2/v3) - if a phone still refuses this file, the block is on the phone, not in the APK"
+            else
+              echo "- **Signature did NOT verify** - this APK cannot install anywhere; see the apksigner output in the build log"
+            fi
+            if [ "$HAS_KEYSTORE" = "true" ]; then
+              echo "- Signed with the release key"
+            else
+              echo "- Debug-signed (no ANDROID_KEYSTORE_BASE64 secret): fine for testing, but a later signed build installs as a different app"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

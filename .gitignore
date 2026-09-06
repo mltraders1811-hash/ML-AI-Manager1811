@@ -30,3 +30,19 @@ npm-debug.log*
 
 # Prisma
 prisma/dev.db
+
+# --- Android app ---
+# Build output and machine-local SDK paths; the project itself is committed
+# so a build needs nothing but this repo and a JDK.
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+# Signing material never belongs in a repository.
+android/keystore.properties
+android/app/*.jks
+android/app/*.keystore
