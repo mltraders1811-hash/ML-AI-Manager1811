@@ -11,7 +11,14 @@ let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
  *  screen awaits this same promise, so two screens mounting together cannot
  *  race two migrations against each other. */
 export function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (!dbPromise) dbPromise = open();
+  if (!dbPromise) {
+    // A rejected promise left in place would poison every query for the rest
+    // of the session, so a failed open clears it and the next call retries.
+    dbPromise = open().catch((e: unknown) => {
+      dbPromise = null;
+      throw e;
+    });
+  }
   return dbPromise;
 }
 
