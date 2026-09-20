@@ -291,6 +291,22 @@ SMS/dialer apps, so a Play release would mean dropping the one thing the app
 is for. Full setup, signing and the push-notification caveat:
 [docs/android.md](docs/android.md).
 
+## Order book app (`mobile/`)
+
+A second, standalone Android app for the counter: **M.L Orders**, built with
+Expo. Where the app above reports on what Vyapar already recorded, this one is
+where an order is *written* - party, broker, a line per item in bags and kilos,
+then sent to the party on WhatsApp.
+
+It shares no code and no database with the web app on purpose. It has to work
+in a godown with no signal, so everything lives in SQLite on the phone, and
+nothing it does can be blocked by a sync that has not run. Data comes back out
+as CSV (one row per order line) or as a JSON backup.
+
+It starts already knowing the shop's parties, items and brokers, taken from the
+July 2026 sale report. Build, run and structure:
+[mobile/README.md](mobile/README.md).
+
 ## Vyapar column mapping
 
 Vyapar's internal SQLite schema isn't publicly documented, so
@@ -525,6 +541,12 @@ above - credit sales with no cash amount, stale invoice balances, item names
 behind a join, an opening balance whose amount lives in the balance column -
 because each of those caused a real bug. Each assertion was checked by
 re-introducing the bug it guards and confirming the test goes red.
+
+The order book app has its own suite (`cd mobile && npm test`) which needs no
+database at all: the order maths runs as plain functions, and the SQL runs
+against Node's built-in SQLite through a small `expo-sqlite` stand-in.
+`.github/workflows/mobile.yml` runs it, the typecheck, and a full Metro bundle
+on any change under `mobile/`.
 
 ## Local development
 

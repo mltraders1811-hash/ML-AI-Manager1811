@@ -1,0 +1,47 @@
+name: Mobile app
+
+# The Expo app is a separate project inside this repository with its own
+# dependencies, so it gets its own job rather than riding on the web CI.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 22, not the 20 the web CI uses: the tests run the database layer
+      # against node:sqlite, which arrived in Node 22.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: mobile/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      # Catches a broken import or a route that does not resolve - the things
+      # a typecheck passes and a phone fails on.
+      - name: Bundle for Android
+        run: npx expo export --platform android --output-dir /tmp/expo-export
