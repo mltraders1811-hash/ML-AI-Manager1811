@@ -28,9 +28,11 @@ import {
   listBrokers,
   listItems,
   listParties,
+  listTransporters,
   saveItem,
   saveOrder,
   saveParty,
+  saveTransporter,
 } from "../../db/queries";
 import { formatDate, parseFlexibleDate, todayISO, addDays } from "../../lib/date";
 import { uid } from "../../lib/id";
@@ -50,6 +52,7 @@ import {
   type Item,
   type OrderStatus,
   type Party,
+  type Transporter,
 } from "../../lib/types";
 import { colors, font, radius, spacing, typeface } from "../../theme";
 
@@ -62,7 +65,12 @@ const emptyLine = (): DraftLine => ({
   rate: "",
 });
 
-type OpenPicker = { kind: "party" } | { kind: "broker" } | { kind: "item"; key: string } | null;
+type OpenPicker =
+  | { kind: "party" }
+  | { kind: "broker" }
+  | { kind: "transporter" }
+  | { kind: "item"; key: string }
+  | null;
 
 export default function OrderFormScreen() {
   const router = useRouter();
@@ -76,9 +84,13 @@ export default function OrderFormScreen() {
   const [parties, setParties] = useState<Party[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [transporters, setTransporters] = useState<Transporter[]>([]);
 
   const [partyId, setPartyId] = useState<string | null>(params.partyId ?? null);
   const [brokerId, setBrokerId] = useState<string | null>(null);
+  // Noted here so the challan needs no form of its own.
+  const [transporterId, setTransporterId] = useState<string | null>(null);
+  const [vehicleNo, setVehicleNo] = useState("");
   const [date, setDate] = useState(todayISO());
   const [dateText, setDateText] = useState(formatDate(todayISO()));
   const [status, setStatus] = useState<OrderStatus>("pending");
@@ -95,21 +107,25 @@ export default function OrderFormScreen() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [p, i, b] = await Promise.all([
+      const [p, i, b, t] = await Promise.all([
         listParties(),
         listItems(),
         listBrokers(),
+        listTransporters(),
       ]);
       if (!alive) return;
       setParties(p);
       setItems(i);
       setBrokers(b);
+      setTransporters(t);
 
       if (editingId) {
         const order = await getOrder(editingId);
         if (order && alive) {
           setPartyId(order.partyId);
           setBrokerId(order.brokerId);
+          setTransporterId(order.transporterId);
+          setVehicleNo(order.vehicleNo ?? "");
           setDate(order.date);
           setDateText(formatDate(order.date));
           setStatus(order.status);
@@ -139,6 +155,7 @@ export default function OrderFormScreen() {
 
   const party = parties.find((p) => p.id === partyId) ?? null;
   const broker = brokers.find((b) => b.id === brokerId) ?? null;
+  const transporter = transporters.find((t) => t.id === transporterId) ?? null;
 
   const totals = useMemo(
     () =>
@@ -225,6 +242,9 @@ export default function OrderFormScreen() {
         date,
         status,
         note: note.trim() || null,
+        transporterId: transporter?.id ?? null,
+        transporterName: transporter?.name ?? null,
+        vehicleNo: vehicleNo.trim() || null,
         discount: parseAmount(discount),
         received: parseAmount(received),
         lines: usableLines(lines).map((l) => ({
@@ -253,6 +273,17 @@ export default function OrderFormScreen() {
     const id = await saveParty({ name: typed });
     setParties(await listParties());
     setPartyId(id);
+    setPicker(null);
+  };
+
+  const createTransporter = async (typed: string) => {
+    if (!typed) {
+      Alert.alert("Name needed", "Type the transporter's name in the search box first.");
+      return;
+    }
+    const id = await saveTransporter({ name: typed });
+    setTransporters(await listTransporters());
+    setTransporterId(id);
     setPicker(null);
   };
 
@@ -285,6 +316,11 @@ export default function OrderFormScreen() {
     id: b.id,
     label: b.name,
     sublabel: b.commissionPct ? `${b.commissionPct}%` : undefined,
+  }));
+  const transporterOptions: PickerOption[] = transporters.map((t) => ({
+    id: t.id,
+    label: t.name,
+    sublabel: t.phone ?? undefined,
   }));
 
   return (
@@ -322,6 +358,23 @@ export default function OrderFormScreen() {
             placeholder="No broker"
             onPress={() => setPicker({ kind: "broker" })}
             onClear={() => setBrokerId(null)}
+          />
+
+          <SelectField
+            label="Transporter (optional)"
+            value={transporter?.name ?? null}
+            placeholder="No transporter"
+            onPress={() => setPicker({ kind: "transporter" })}
+            onClear={() => setTransporterId(null)}
+          />
+          <Field
+            label="Vehicle / gadi no. (optional)"
+            value={vehicleNo}
+            onChangeText={(t) => setVehicleNo(t.toUpperCase())}
+            placeholder="MP 17 AB 1234"
+            autoCapitalize="characters"
+            hint="Printed on the challan that goes with the goods."
+            style={s.lastField}
           />
         </Card>
 
@@ -481,6 +534,20 @@ export default function OrderFormScreen() {
         onClose={() => setPicker(null)}
       />
       <Picker
+        visible={picker?.kind === "transporter"}
+        title="Choose transporter"
+        searchPlaceholder="Search transporters"
+        options={transporterOptions}
+        selectedId={transporterId}
+        createLabel="Add transporter"
+        onCreate={(typed) => void createTransporter(typed)}
+        onSelect={(o) => {
+          setTransporterId(o.id);
+          setPicker(null);
+        }}
+        onClose={() => setPicker(null)}
+      />
+      <Picker
         visible={picker?.kind === "item"}
         title="Choose item"
         searchPlaceholder="Search items"
@@ -532,6 +599,7 @@ const s = StyleSheet.create({
   lineInputs: { flexDirection: "row", gap: spacing.sm },
   lineInput: { flex: 1 },
   noteField: { marginBottom: 0 },
+  lastField: { marginBottom: 0 },
   lineTotal: {
     flexDirection: "row",
     justifyContent: "space-between",

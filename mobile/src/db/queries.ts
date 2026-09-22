@@ -1,5 +1,6 @@
 import { getDb } from "./index";
 import { nowISO, uid } from "../lib/id";
+import { todayISO } from "../lib/date";
 import { computeTotals, lineAmount, nextChallanNo, nextOrderNo } from "../lib/order";
 import { parseAmount, round2 } from "../lib/money";
 import type {
@@ -49,6 +50,9 @@ interface OrderRow {
   date: string;
   status: string;
   note: string | null;
+  transporter_id: string | null;
+  transporter_name: string | null;
+  vehicle_no: string | null;
   subtotal: number;
   discount: number;
   total: number;
@@ -101,6 +105,9 @@ const toOrder = (r: OrderRow): Order => ({
   date: r.date,
   status: r.status as OrderStatus,
   note: r.note,
+  transporterId: r.transporter_id,
+  transporterName: r.transporter_name,
+  vehicleNo: r.vehicle_no,
   subtotal: r.subtotal,
   discount: r.discount,
   total: r.total,
@@ -407,6 +414,11 @@ export interface SaveOrderInput {
   date: string;
   status: OrderStatus;
   note: string | null;
+  /** The lorry, when it is already known. An order can be written before one
+   *  is arranged, so these are optional. */
+  transporterId?: string | null;
+  transporterName?: string | null;
+  vehicleNo?: string | null;
   discount: number;
   received: number;
   lines: {
@@ -430,7 +442,8 @@ export async function saveOrder(input: SaveOrderInput): Promise<string> {
     if (input.id) {
       await db.runAsync(
         `UPDATE orders SET party_id = ?, party_name = ?, broker_id = ?, broker_name = ?,
-                           date = ?, status = ?, note = ?, subtotal = ?, discount = ?,
+                           date = ?, status = ?, note = ?, transporter_id = ?,
+                           transporter_name = ?, vehicle_no = ?, subtotal = ?, discount = ?,
                            total = ?, received = ?, balance = ?, updated_at = ?
          WHERE id = ?`,
         [
@@ -441,6 +454,9 @@ export async function saveOrder(input: SaveOrderInput): Promise<string> {
           input.date,
           input.status,
           input.note,
+          input.transporterId ?? null,
+          input.transporterName ?? null,
+          input.vehicleNo ?? null,
           totals.subtotal,
           totals.discount,
           totals.total,
@@ -460,9 +476,10 @@ export async function saveOrder(input: SaveOrderInput): Promise<string> {
       const orderNo = nextOrderNo(last?.order_no ?? null, input.date);
       await db.runAsync(
         `INSERT INTO orders (id, order_no, party_id, party_name, broker_id, broker_name,
-                             date, status, note, subtotal, discount, total, received, balance,
+                             date, status, note, transporter_id, transporter_name, vehicle_no,
+                             subtotal, discount, total, received, balance,
                              created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           orderNo,
@@ -473,6 +490,9 @@ export async function saveOrder(input: SaveOrderInput): Promise<string> {
           input.date,
           input.status,
           input.note,
+          input.transporterId ?? null,
+          input.transporterName ?? null,
+          input.vehicleNo ?? null,
           totals.subtotal,
           totals.discount,
           totals.total,
@@ -810,87 +830,77 @@ export async function getChallanForOrder(orderId: string): Promise<Challan | nul
   return row ? toChallan(row) : null;
 }
 
-export interface SaveChallanInput {
-  orderId: string;
-  date: string;
-  transporterId: string | null;
-  transporterName: string | null;
-  transporterPhone: string | null;
-  vehicleNo: string | null;
-  driverName: string | null;
-  driverPhone: string | null;
-  lrNo: string | null;
-  destination: string | null;
-  note: string | null;
-  showRates: boolean;
-}
-
-/** One challan per order: writing it again edits the paper rather than
- *  issuing a second one, so a challan number never quietly changes under a
- *  lorry that has already left with it. */
-export async function saveChallan(input: SaveChallanInput): Promise<Challan> {
+/** Issues the challan for an order, copying everything it prints from the
+ *  order itself - party, destination, goods, lorry - so nothing is typed a
+ *  second time. Issued once: printing again reuses the same number, because a
+ *  challan number must not change under a lorry that already left with it. */
+export async function issueChallan(orderId: string): Promise<Challan> {
   const db = await getDb();
   const now = nowISO();
-  const existing = await getChallanForOrder(input.orderId);
+
+  const order = await getOrder(orderId);
+  if (!order) throw new Error("That order could not be found.");
+  const party = await getParty(order.partyId);
+
+  const existing = await getChallanForOrder(orderId);
+  const values = {
+    date: todayISO(),
+    transporterId: order.transporterId,
+    transporterName: order.transporterName,
+    // The lorry's own number is on the transporter record, not the order.
+    transporterPhone: order.transporterId
+      ? ((await listTransporters()).find((t) => t.id === order.transporterId)?.phone ?? null)
+      : null,
+    vehicleNo: order.vehicleNo,
+    destination: party?.address ?? null,
+    note: order.note,
+  };
 
   if (existing) {
     await db.runAsync(
-      `UPDATE challans SET date = ?, transporter_id = ?, transporter_name = ?,
-              transporter_phone = ?, vehicle_no = ?, driver_name = ?, driver_phone = ?,
-              lr_no = ?, destination = ?, note = ?, show_rates = ?, updated_at = ?
+      `UPDATE challans SET transporter_id = ?, transporter_name = ?, transporter_phone = ?,
+              vehicle_no = ?, destination = ?, note = ?, updated_at = ?
        WHERE id = ?`,
       [
-        input.date,
-        input.transporterId,
-        input.transporterName,
-        input.transporterPhone,
-        input.vehicleNo,
-        input.driverName,
-        input.driverPhone,
-        input.lrNo,
-        input.destination,
-        input.note,
-        input.showRates ? 1 : 0,
+        values.transporterId,
+        values.transporterName,
+        values.transporterPhone,
+        values.vehicleNo,
+        values.destination,
+        values.note,
         now,
         existing.id,
       ],
     );
-    const updated = await getChallanForOrder(input.orderId);
-    if (!updated) throw new Error("Challan disappeared while saving.");
-    return updated;
+  } else {
+    const last = await db.getFirstAsync<{ challan_no: string }>(
+      "SELECT challan_no FROM challans ORDER BY challan_no DESC LIMIT 1",
+    );
+    await db.runAsync(
+      `INSERT INTO challans (id, challan_no, order_id, date, transporter_id, transporter_name,
+                             transporter_phone, vehicle_no, driver_name, driver_phone, lr_no,
+                             destination, note, show_rates, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, 0, ?, ?)`,
+      [
+        uid("chl_"),
+        nextChallanNo(last?.challan_no ?? null, values.date),
+        orderId,
+        values.date,
+        values.transporterId,
+        values.transporterName,
+        values.transporterPhone,
+        values.vehicleNo,
+        values.destination,
+        values.note,
+        now,
+        now,
+      ],
+    );
   }
 
-  const last = await db.getFirstAsync<{ challan_no: string }>(
-    "SELECT challan_no FROM challans ORDER BY challan_no DESC LIMIT 1",
-  );
-  const id = uid("chl_");
-  await db.runAsync(
-    `INSERT INTO challans (id, challan_no, order_id, date, transporter_id, transporter_name,
-                           transporter_phone, vehicle_no, driver_name, driver_phone, lr_no,
-                           destination, note, show_rates, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      nextChallanNo(last?.challan_no ?? null, input.date),
-      input.orderId,
-      input.date,
-      input.transporterId,
-      input.transporterName,
-      input.transporterPhone,
-      input.vehicleNo,
-      input.driverName,
-      input.driverPhone,
-      input.lrNo,
-      input.destination,
-      input.note,
-      input.showRates ? 1 : 0,
-      now,
-      now,
-    ],
-  );
-  const created = await getChallanForOrder(input.orderId);
-  if (!created) throw new Error("Challan could not be written.");
-  return created;
+  const challan = await getChallanForOrder(orderId);
+  if (!challan) throw new Error("Challan could not be written.");
+  return challan;
 }
 
 export async function deleteChallan(id: string): Promise<void> {

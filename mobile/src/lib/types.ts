@@ -67,6 +67,11 @@ export interface Order {
   date: string; // yyyy-mm-dd
   status: OrderStatus;
   note: string | null;
+  /** Who is carrying it, noted with the order so the challan needs no form. */
+  transporterId: string | null;
+  transporterName: string | null;
+  /** The gadi number painted on the lorry - what the gateman checks. */
+  vehicleNo: string | null;
   subtotal: number;
   discount: number;
   total: number;
@@ -116,6 +121,8 @@ export interface Challan {
   destination: string | null;
   note: string | null;
   showRates: boolean;
+  // Everything above is copied from the order when the challan is issued;
+  // none of it is typed twice.
   createdAt: string;
   updatedAt: string;
 }

@@ -26,11 +26,19 @@ import {
   getChallanForOrder,
   getOrder,
   getParty,
+  issueChallan,
   setOrderStatus,
 } from "../../db/queries";
 import { formatDateLong } from "../../lib/date";
 import { formatINR, formatQty, parseAmount } from "../../lib/money";
+import {
+  buildChallanHtml,
+  buildChallanMessage,
+  challanFileName,
+  type ChallanDoc,
+} from "../../lib/challan";
 import { buildOrderMessage, telLink, waLink } from "../../lib/message";
+import { printHtml, sharePdf } from "../../lib/print";
 import {
   nextStatus,
   orderBags,
@@ -40,7 +48,7 @@ import {
   statusLabel,
 } from "../../lib/order";
 import { useQuery } from "../../hooks/useQuery";
-import { getShopName } from "../../lib/settings";
+import { getShopProfile } from "../../lib/settings";
 import { colors, font, spacing, typeface } from "../../theme";
 
 export default function OrderDetailScreen() {
@@ -53,12 +61,12 @@ export default function OrderDetailScreen() {
     if (!id) return null;
     const order = await getOrder(id);
     if (!order) return null;
-    const [party, shopName, challan] = await Promise.all([
+    const [party, shop, challan] = await Promise.all([
       getParty(order.partyId),
-      getShopName(),
+      getShopProfile(),
       getChallanForOrder(order.id),
     ]);
-    return { order, party, shopName, challan };
+    return { order, party, shop, challan };
   }, [id]);
 
   if (loading && !data) return <Loading />;
@@ -74,10 +82,10 @@ export default function OrderDetailScreen() {
     );
   }
 
-  const { order, party, shopName, challan } = data;
+  const { order, party, shop, challan } = data;
   const pay = paymentStatus(order.total, order.received);
   const next = nextStatus(order.status);
-  const message = buildOrderMessage(order, shopName);
+  const message = buildOrderMessage(order, shop.name);
 
   const runBusy = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -122,6 +130,28 @@ export default function OrderDetailScreen() {
       await addPayment(order.id, amount);
       setPayment("");
     });
+  };
+
+  const withChallan = async (
+    key: string,
+    fn: (doc: ChallanDoc) => Promise<void>,
+  ) => {
+    if (order.lines.length === 0) {
+      Alert.alert("Nothing to send", "This order has no items on it.");
+      return;
+    }
+    setBusy(true);
+    try {
+      // Issued from the order itself: party, destination, goods and lorry are
+      // copied across, so there is no second form to fill in.
+      const issued = await issueChallan(order.id);
+      await fn({ challan: issued, order, party, shop });
+      reload();
+    } catch (e) {
+      Alert.alert("Could not print", e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onDelete = () => {
@@ -270,17 +300,43 @@ export default function OrderDetailScreen() {
           <Text style={s.sectionTitle}>Delivery challan</Text>
           <Text style={s.hint}>
             {challan
-              ? `${challan.challanNo}${challan.vehicleNo ? ` · ${challan.vehicleNo}` : ""}${
-                  challan.transporterName ? ` · ${challan.transporterName}` : ""
-                }`
-              : "The paper that goes with the gadi. Print it for the driver, or send it to the transporter."}
+              ? `${challan.challanNo} · two A6 copies, one for the gadi and one signed back`
+              : `Two A6 copies from the order: ${order.transporterName ?? "no transporter"}${
+                  order.vehicleNo ? ` · ${order.vehicleNo}` : ""
+                }. Edit the order to change the gadi.`}
           </Text>
           <Button
-            title={challan ? "Open challan" : "Make challan"}
-            icon="document-text-outline"
-            variant={challan ? "secondary" : "primary"}
-            onPress={() => router.push(`/challan/${order.id}`)}
+            title="Print challan"
+            icon="print"
+            onPress={() => void withChallan("print", (doc) => printHtml(buildChallanHtml(doc)))}
+            loading={busy}
           />
+          <View style={s.actions}>
+            <Button
+              title="PDF"
+              icon="share-outline"
+              variant="secondary"
+              onPress={() =>
+                void withChallan("pdf", (doc) =>
+                  sharePdf(buildChallanHtml(doc), challanFileName(doc.challan.challanNo)),
+                )
+              }
+              style={s.flex}
+            />
+            <Button
+              title="WhatsApp"
+              icon="logo-whatsapp"
+              variant="secondary"
+              onPress={() =>
+                void withChallan("wa", async (doc) => {
+                  await Linking.openURL(
+                    waLink(doc.challan.transporterPhone, buildChallanMessage(doc)),
+                  );
+                })
+              }
+              style={s.flex}
+            />
+          </View>
         </Card>
       ) : null}
 
@@ -393,5 +449,5 @@ const s = StyleSheet.create({
   payRow: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start" },
   payButton: { width: 96 },
   spaced: { marginTop: spacing.sm },
-  actions: { flexDirection: "row", gap: spacing.sm },
+  actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
 });

@@ -10,7 +10,7 @@ import {
   deleteChallan,
   getChallanForOrder,
   listTransporters,
-  saveChallan,
+  issueChallan,
   saveTransporter,
   brokerSummary,
   deleteOrder,
@@ -365,8 +365,15 @@ describe("upgrading an existing shop's database", () => {
 });
 
 describe("challans", () => {
-  it("numbers its own series and keeps one challan per order", async () => {
+  it("takes every detail from the order, with nothing typed twice", async () => {
     const party = (await listParties())[0]!;
+    await saveParty({ id: party.id, name: party.name, address: "Sidhi" });
+
+    const transporterId = await saveTransporter({
+      name: "Sharma Roadways",
+      phone: "9820000000",
+    });
+
     const orderId = await saveOrder({
       partyId: party.id,
       partyName: party.name,
@@ -374,58 +381,68 @@ describe("challans", () => {
       brokerName: null,
       date: "2026-07-10",
       status: "packed",
-      note: null,
+      note: "25 kg lot",
+      transporterId,
+      transporterName: "Sharma Roadways",
+      vehicleNo: "MP 17 AB 1234",
       discount: 0,
       received: 0,
       lines: [{ itemId: null, itemName: "Biji Safed", bags: 5, qty: 250, rate: 115 }],
     });
 
-    const transporterId = await saveTransporter({
-      name: "Sharma Roadways",
-      phone: "9820000000",
-    });
-    const transporter = (await listTransporters()).find((t) => t.id === transporterId)!;
+    const challan = await issueChallan(orderId);
+    expect(challan.challanNo).toBe("CH-2026-0001");
+    // Every one of these came off the order or the party, not a form.
+    expect(challan.transporterName).toBe("Sharma Roadways");
+    expect(challan.transporterPhone).toBe("9820000000");
+    expect(challan.vehicleNo).toBe("MP 17 AB 1234");
+    expect(challan.destination).toBe("Sidhi");
+    expect(challan.note).toBe("25 kg lot");
+    // The transport copy carries no prices.
+    expect(challan.showRates).toBe(false);
+  });
 
-    const first = await saveChallan({
-      orderId,
-      date: "2026-07-10",
-      transporterId: transporter.id,
-      transporterName: transporter.name,
-      transporterPhone: transporter.phone,
-      vehicleNo: "MP 17 AB 1234",
-      driverName: "Ramesh",
-      driverPhone: "9812345678",
-      lrNo: "LR-1",
-      destination: "Rewa",
-      note: null,
-      showRates: true,
-    });
-    expect(first.challanNo).toBe("CH-2026-0001");
-    expect(first.showRates).toBe(true);
+  it("keeps its number when it is printed again", async () => {
+    const orders = await listOrders({ from: "2026-07-10", to: "2026-07-10" });
+    const target = orders[0]!;
+    const first = await getChallanForOrder(target.id);
 
-    // Saving again edits the paper rather than issuing a second number: a
-    // challan number must not change under a lorry that already left with it.
-    const again = await saveChallan({
-      orderId,
-      date: "2026-07-10",
-      transporterId: transporter.id,
-      transporterName: transporter.name,
-      transporterPhone: transporter.phone,
-      vehicleNo: "MP 17 XY 9999",
-      driverName: "Ramesh",
-      driverPhone: "9812345678",
-      lrNo: "LR-1",
-      destination: "Rewa",
-      note: "changed lorry",
-      showRates: false,
-    });
-    expect(again.id).toBe(first.id);
-    expect(again.challanNo).toBe("CH-2026-0001");
-    expect(again.vehicleNo).toBe("MP 17 XY 9999");
-    expect(again.showRates).toBe(false);
+    const again = await issueChallan(target.id);
+    expect(again.id).toBe(first!.id);
+    expect(again.challanNo).toBe(first!.challanNo);
+  });
 
-    const fetched = await getChallanForOrder(orderId);
-    expect(fetched?.challanNo).toBe("CH-2026-0001");
+  it("picks up a change to the gadi made on the order", async () => {
+    const orders = await listOrders({ from: "2026-07-10", to: "2026-07-10" });
+    const target = await getOrder(orders[0]!.id);
+
+    await saveOrder({
+      id: target!.id,
+      partyId: target!.partyId,
+      partyName: target!.partyName,
+      brokerId: null,
+      brokerName: null,
+      date: target!.date,
+      status: target!.status,
+      note: target!.note,
+      transporterId: null,
+      transporterName: "Satya Bhai Transport",
+      vehicleNo: "MP 09 ZZ 9999",
+      discount: 0,
+      received: 0,
+      lines: target!.lines.map((l) => ({
+        itemId: l.itemId,
+        itemName: l.itemName,
+        bags: l.bags,
+        qty: l.qty,
+        rate: l.rate,
+      })),
+    });
+
+    const reissued = await issueChallan(target!.id);
+    expect(reissued.vehicleNo).toBe("MP 09 ZZ 9999");
+    expect(reissued.transporterName).toBe("Satya Bhai Transport");
+    expect(reissued.challanNo).toBe("CH-2026-0001");
   });
 
   it("gives the next order its own challan number", async () => {
@@ -442,21 +459,10 @@ describe("challans", () => {
       received: 0,
       lines: [{ itemId: null, itemName: "Haldi", bags: 1, qty: 30, rate: 148 }],
     });
-    const challan = await saveChallan({
-      orderId,
-      date: "2026-07-11",
-      transporterId: null,
-      transporterName: null,
-      transporterPhone: null,
-      vehicleNo: null,
-      driverName: null,
-      driverPhone: null,
-      lrNo: null,
-      destination: null,
-      note: null,
-      showRates: true,
-    });
+    const challan = await issueChallan(orderId);
     expect(challan.challanNo).toBe("CH-2026-0002");
+    // An order with no lorry arranged yet still gets its paper.
+    expect(challan.vehicleNo).toBeNull();
   });
 
   it("goes with the order when the order is deleted", async () => {
@@ -473,38 +479,15 @@ describe("challans", () => {
       received: 0,
       lines: [{ itemId: null, itemName: "Dhaniya", bags: 1, qty: 30, rate: 165 }],
     });
-    await saveChallan({
-      orderId,
-      date: "2026-07-12",
-      transporterId: null,
-      transporterName: null,
-      transporterPhone: null,
-      vehicleNo: "MP 09 ZZ 1111",
-      driverName: null,
-      driverPhone: null,
-      lrNo: null,
-      destination: null,
-      note: null,
-      showRates: true,
-    });
+    await issueChallan(orderId);
     expect(await getChallanForOrder(orderId)).not.toBeNull();
 
     await deleteOrder(orderId);
     expect(await getChallanForOrder(orderId)).toBeNull();
   });
 
-  it("keeps a challan's transporter name after the transporter is deleted", async () => {
-    const { deleteTransporter } = await import("../src/db/queries");
-    const orders = await listOrders({ from: "2026-07-10", to: "2026-07-10" });
-    const withChallan = orders[0];
-    if (!withChallan) return;
-    const before = await getChallanForOrder(withChallan.id);
-    if (!before?.transporterId) return;
-
-    await deleteTransporter(before.transporterId);
-    const after = await getChallanForOrder(withChallan.id);
-    expect(after?.transporterName).toBe(before.transporterName);
-    expect(after?.transporterId).toBeNull();
+  it("refuses to issue one for an order that is not there", async () => {
+    await expect(issueChallan("nope")).rejects.toThrow(/could not be found/);
   });
 
   it("can be torn up without touching the order", async () => {

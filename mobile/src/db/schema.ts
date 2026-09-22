@@ -114,5 +114,14 @@ export const MIGRATIONS: string[] = [
   CREATE UNIQUE INDEX IF NOT EXISTS idx_challans_no ON challans(challan_no);
   CREATE INDEX IF NOT EXISTS idx_challans_order ON challans(order_id);
   `,
+
+  // 3 - the lorry moves onto the order. A challan should not be a second form
+  // to fill in: everything it prints is written once, when the order is
+  // taken, and printing is then one tap.
+  `
+  ALTER TABLE orders ADD COLUMN transporter_id TEXT;
+  ALTER TABLE orders ADD COLUMN transporter_name TEXT;
+  ALTER TABLE orders ADD COLUMN vehicle_no TEXT;
+  `,
 ];
 

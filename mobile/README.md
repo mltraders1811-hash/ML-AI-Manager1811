@@ -20,7 +20,8 @@ godowns and market lanes where the signal is not.
 | **Parties** | The phone book, with what each party owes and their full order history. |
 | **Items** | The catalogue, with the rate each item is usually billed at and its bag weight. |
 | **Reports** | Sales, weight and dues for a period, top items, top parties, brokerage owed - and CSV export. |
-| **More** | Shop name, brokers, backup and restore, sample data. |
+| **Challan** | Two A6 copies straight off an order — one goes with the gadi, one comes back signed. Print, PDF or WhatsApp. |
+| **More** | Shop name, brokers, transporters, backup and restore, sample data. |
 
 ### The things that make it a shop's app, not a generic CRUD form
 
@@ -37,6 +38,11 @@ godowns and market lanes where the signal is not.
 - **History does not rewrite itself.** A bill keeps its own copy of the party
   and item names, so deleting an item or renaming a broker never changes what
   an old order says it was.
+- **The challan is not a second form.** Everything it prints — party,
+  destination, goods, transporter, gadi number — is already on the order, so
+  issuing one is a single tap. The lorry is noted when the order is written.
+  Two A6 pages come out of the printer: the transporter's copy and the office
+  copy that comes back signed, the way the handwritten pad is already used.
 
 ## Running it
 
