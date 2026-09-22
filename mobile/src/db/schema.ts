@@ -77,4 +77,42 @@ export const MIGRATIONS: string[] = [
     value TEXT
   );
   `,
+
+  // 2 - the delivery challan that travels with the goods. Separate from the
+  // order because it is a different document for a different reader: the
+  // driver and the party's gateman check bags against it, not money.
+  `
+  CREATE TABLE IF NOT EXISTS transporters (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    phone TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS challans (
+    id TEXT PRIMARY KEY NOT NULL,
+    challan_no TEXT NOT NULL,
+    order_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    transporter_id TEXT,
+    -- Snapshotted like every other name on a document: renaming a
+    -- transporter must not rewrite a challan already sent with a lorry.
+    transporter_name TEXT,
+    transporter_phone TEXT,
+    vehicle_no TEXT,
+    driver_name TEXT,
+    driver_phone TEXT,
+    lr_no TEXT,
+    destination TEXT,
+    note TEXT,
+    -- The transport copy does not always carry prices; the shop decides
+    -- per challan.
+    show_rates INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_challans_no ON challans(challan_no);
+  CREATE INDEX IF NOT EXISTS idx_challans_order ON challans(order_id);
+  `,
 ];
+

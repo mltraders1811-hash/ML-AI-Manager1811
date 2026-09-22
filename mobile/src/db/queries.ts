@@ -1,15 +1,17 @@
 import { getDb } from "./index";
 import { nowISO, uid } from "../lib/id";
-import { computeTotals, lineAmount, nextOrderNo } from "../lib/order";
+import { computeTotals, lineAmount, nextChallanNo, nextOrderNo } from "../lib/order";
 import { parseAmount, round2 } from "../lib/money";
 import type {
   Broker,
+  Challan,
   Item,
   Order,
   OrderLine,
   OrderStatus,
   OrderWithLines,
   Party,
+  Transporter,
 } from "../lib/types";
 
 /* ------------------------------------------------------------------ rows */
@@ -708,4 +710,203 @@ export async function dailyTotals(
     [from, to],
   );
   return rows.map((r) => ({ date: r.date, total: round2(r.total) }));
+}
+
+
+/* ----------------------------------------------------------- transporters */
+
+interface TransporterRow {
+  id: string;
+  name: string;
+  phone: string | null;
+}
+
+export async function listTransporters(): Promise<Transporter[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<TransporterRow>(
+    "SELECT * FROM transporters ORDER BY name COLLATE NOCASE",
+  );
+  return rows.map((r) => ({ id: r.id, name: r.name, phone: r.phone }));
+}
+
+export async function saveTransporter(input: {
+  id?: string | null;
+  name: string;
+  phone?: string | null;
+}): Promise<string> {
+  const db = await getDb();
+  const name = input.name.trim();
+  const phone = input.phone?.trim() || null;
+  if (input.id) {
+    await db.runAsync("UPDATE transporters SET name = ?, phone = ? WHERE id = ?", [
+      name,
+      phone,
+      input.id,
+    ]);
+    return input.id;
+  }
+  const id = uid("trp_");
+  await db.runAsync(
+    "INSERT INTO transporters (id, name, phone) VALUES (?, ?, ?)",
+    [id, name, phone],
+  );
+  return id;
+}
+
+/** Challans keep their own copy of the name, so removing a transporter from
+ *  the list costs no paperwork. */
+export async function deleteTransporter(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE challans SET transporter_id = NULL WHERE transporter_id = ?", [id]);
+  await db.runAsync("DELETE FROM transporters WHERE id = ?", [id]);
+}
+
+/* --------------------------------------------------------------- challans */
+
+interface ChallanRow {
+  id: string;
+  challan_no: string;
+  order_id: string;
+  date: string;
+  transporter_id: string | null;
+  transporter_name: string | null;
+  transporter_phone: string | null;
+  vehicle_no: string | null;
+  driver_name: string | null;
+  driver_phone: string | null;
+  lr_no: string | null;
+  destination: string | null;
+  note: string | null;
+  show_rates: number;
+  created_at: string;
+  updated_at: string;
+}
+
+const toChallan = (r: ChallanRow): Challan => ({
+  id: r.id,
+  challanNo: r.challan_no,
+  orderId: r.order_id,
+  date: r.date,
+  transporterId: r.transporter_id,
+  transporterName: r.transporter_name,
+  transporterPhone: r.transporter_phone,
+  vehicleNo: r.vehicle_no,
+  driverName: r.driver_name,
+  driverPhone: r.driver_phone,
+  lrNo: r.lr_no,
+  destination: r.destination,
+  note: r.note,
+  showRates: r.show_rates === 1,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+export async function getChallanForOrder(orderId: string): Promise<Challan | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<ChallanRow>(
+    "SELECT * FROM challans WHERE order_id = ? ORDER BY created_at LIMIT 1",
+    [orderId],
+  );
+  return row ? toChallan(row) : null;
+}
+
+export interface SaveChallanInput {
+  orderId: string;
+  date: string;
+  transporterId: string | null;
+  transporterName: string | null;
+  transporterPhone: string | null;
+  vehicleNo: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  lrNo: string | null;
+  destination: string | null;
+  note: string | null;
+  showRates: boolean;
+}
+
+/** One challan per order: writing it again edits the paper rather than
+ *  issuing a second one, so a challan number never quietly changes under a
+ *  lorry that has already left with it. */
+export async function saveChallan(input: SaveChallanInput): Promise<Challan> {
+  const db = await getDb();
+  const now = nowISO();
+  const existing = await getChallanForOrder(input.orderId);
+
+  if (existing) {
+    await db.runAsync(
+      `UPDATE challans SET date = ?, transporter_id = ?, transporter_name = ?,
+              transporter_phone = ?, vehicle_no = ?, driver_name = ?, driver_phone = ?,
+              lr_no = ?, destination = ?, note = ?, show_rates = ?, updated_at = ?
+       WHERE id = ?`,
+      [
+        input.date,
+        input.transporterId,
+        input.transporterName,
+        input.transporterPhone,
+        input.vehicleNo,
+        input.driverName,
+        input.driverPhone,
+        input.lrNo,
+        input.destination,
+        input.note,
+        input.showRates ? 1 : 0,
+        now,
+        existing.id,
+      ],
+    );
+    const updated = await getChallanForOrder(input.orderId);
+    if (!updated) throw new Error("Challan disappeared while saving.");
+    return updated;
+  }
+
+  const last = await db.getFirstAsync<{ challan_no: string }>(
+    "SELECT challan_no FROM challans ORDER BY challan_no DESC LIMIT 1",
+  );
+  const id = uid("chl_");
+  await db.runAsync(
+    `INSERT INTO challans (id, challan_no, order_id, date, transporter_id, transporter_name,
+                           transporter_phone, vehicle_no, driver_name, driver_phone, lr_no,
+                           destination, note, show_rates, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      nextChallanNo(last?.challan_no ?? null, input.date),
+      input.orderId,
+      input.date,
+      input.transporterId,
+      input.transporterName,
+      input.transporterPhone,
+      input.vehicleNo,
+      input.driverName,
+      input.driverPhone,
+      input.lrNo,
+      input.destination,
+      input.note,
+      input.showRates ? 1 : 0,
+      now,
+      now,
+    ],
+  );
+  const created = await getChallanForOrder(input.orderId);
+  if (!created) throw new Error("Challan could not be written.");
+  return created;
+}
+
+export async function deleteChallan(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("DELETE FROM challans WHERE id = ?", [id]);
+}
+
+/** Order ids that already have a challan, so a list can mark them without a
+ *  query per row. */
+export async function challanOrderIds(orderIds: string[]): Promise<Set<string>> {
+  if (orderIds.length === 0) return new Set();
+  const db = await getDb();
+  const placeholders = orderIds.map(() => "?").join(",");
+  const rows = await db.getAllAsync<{ order_id: string }>(
+    `SELECT DISTINCT order_id FROM challans WHERE order_id IN (${placeholders})`,
+    orderIds,
+  );
+  return new Set(rows.map((r) => r.order_id));
 }

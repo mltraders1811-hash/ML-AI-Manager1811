@@ -90,3 +90,40 @@ export interface DraftLine {
   qty: string;
   rate: string;
 }
+
+export interface Transporter {
+  id: string;
+  name: string;
+  phone: string | null;
+}
+
+/** The delivery note that travels with the goods. One per order: a bill is
+ *  for the party's accounts, a challan is for the driver and the gateman. */
+export interface Challan {
+  id: string;
+  challanNo: string;
+  orderId: string;
+  date: string; // yyyy-mm-dd
+  transporterId: string | null;
+  transporterName: string | null;
+  transporterPhone: string | null;
+  /** The gadi number painted on the lorry - what the gateman checks. */
+  vehicleNo: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  /** The transporter's own builty / lorry receipt number. */
+  lrNo: string | null;
+  destination: string | null;
+  note: string | null;
+  showRates: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Who the goods are going out from - printed at the top of a challan. */
+export interface ShopProfile {
+  name: string;
+  address: string;
+  phone: string;
+  gstin: string;
+}

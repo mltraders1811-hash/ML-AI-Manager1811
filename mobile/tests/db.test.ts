@@ -1,10 +1,17 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { getDb, resetDb } from "../src/db";
+import { getDb, migrate, resetDb } from "../src/db";
+import { MIGRATIONS } from "../src/db/schema";
+import { openDatabaseAsync } from "./expoSqliteShim";
 import { loadSampleOrders, sampleOrdersLoaded } from "../src/db/seed";
 import { exportBackup, restoreBackup } from "../src/db/backup";
 import {
   addPayment,
+  deleteChallan,
+  getChallanForOrder,
+  listTransporters,
+  saveChallan,
+  saveTransporter,
   brokerSummary,
   deleteOrder,
   deleteParty,
@@ -305,5 +312,209 @@ describe("starting over", () => {
     expect((await listParties()).length).toBe(14);
     await saveBroker({ name: "new broker", commissionPct: 1.5 });
     expect((await listBrokers()).map((b) => b.name)).toContain("new broker");
+  });
+});
+
+
+describe("upgrading an existing shop's database", () => {
+  it("adds the challan tables without touching what is already written", async () => {
+    // A phone that installed the app before challans existed: schema 1, with
+    // a party and an order already in it.
+    const old = await openDatabaseAsync();
+    const first = MIGRATIONS[0];
+    if (!first) throw new Error("migration 1 missing");
+    await old.execAsync(first);
+    await old.execAsync("PRAGMA user_version = 1");
+    await old.runAsync(
+      `INSERT INTO parties (id, name, phone, address, note, created_at, updated_at)
+       VALUES ('p_old', 'Old Party', '9000000000', NULL, NULL, 'x', 'x')`,
+    );
+    await old.runAsync(
+      `INSERT INTO orders (id, order_no, party_id, party_name, broker_id, broker_name,
+                           date, status, note, subtotal, discount, total, received, balance,
+                           created_at, updated_at)
+       VALUES ('o_old', 'ORD-2026-0001', 'p_old', 'Old Party', NULL, NULL,
+               '2026-07-01', 'delivered', NULL, 100, 0, 100, 0, 100, 'x', 'x')`,
+    );
+
+    await migrate(old as never);
+
+    const version = await old.getFirstAsync<{ user_version: number }>(
+      "PRAGMA user_version",
+    );
+    expect(version?.user_version).toBe(MIGRATIONS.length);
+
+    const orders = await old.getAllAsync("SELECT * FROM orders");
+    const parties = await old.getAllAsync("SELECT * FROM parties");
+    expect(orders).toHaveLength(1);
+    expect(parties).toHaveLength(1);
+
+    // And the new tables are there to be written to.
+    const challans = await old.getAllAsync("SELECT * FROM challans");
+    const transporters = await old.getAllAsync("SELECT * FROM transporters");
+    expect(challans).toHaveLength(0);
+    expect(transporters).toHaveLength(0);
+  });
+
+  it("is safe to run again on a database already at the latest version", async () => {
+    const db = await getDb();
+    const before = (await listOrders()).length;
+    await migrate(db as never);
+    expect((await listOrders()).length).toBe(before);
+  });
+});
+
+describe("challans", () => {
+  it("numbers its own series and keeps one challan per order", async () => {
+    const party = (await listParties())[0]!;
+    const orderId = await saveOrder({
+      partyId: party.id,
+      partyName: party.name,
+      brokerId: null,
+      brokerName: null,
+      date: "2026-07-10",
+      status: "packed",
+      note: null,
+      discount: 0,
+      received: 0,
+      lines: [{ itemId: null, itemName: "Biji Safed", bags: 5, qty: 250, rate: 115 }],
+    });
+
+    const transporterId = await saveTransporter({
+      name: "Sharma Roadways",
+      phone: "9820000000",
+    });
+    const transporter = (await listTransporters()).find((t) => t.id === transporterId)!;
+
+    const first = await saveChallan({
+      orderId,
+      date: "2026-07-10",
+      transporterId: transporter.id,
+      transporterName: transporter.name,
+      transporterPhone: transporter.phone,
+      vehicleNo: "MP 17 AB 1234",
+      driverName: "Ramesh",
+      driverPhone: "9812345678",
+      lrNo: "LR-1",
+      destination: "Rewa",
+      note: null,
+      showRates: true,
+    });
+    expect(first.challanNo).toBe("CH-2026-0001");
+    expect(first.showRates).toBe(true);
+
+    // Saving again edits the paper rather than issuing a second number: a
+    // challan number must not change under a lorry that already left with it.
+    const again = await saveChallan({
+      orderId,
+      date: "2026-07-10",
+      transporterId: transporter.id,
+      transporterName: transporter.name,
+      transporterPhone: transporter.phone,
+      vehicleNo: "MP 17 XY 9999",
+      driverName: "Ramesh",
+      driverPhone: "9812345678",
+      lrNo: "LR-1",
+      destination: "Rewa",
+      note: "changed lorry",
+      showRates: false,
+    });
+    expect(again.id).toBe(first.id);
+    expect(again.challanNo).toBe("CH-2026-0001");
+    expect(again.vehicleNo).toBe("MP 17 XY 9999");
+    expect(again.showRates).toBe(false);
+
+    const fetched = await getChallanForOrder(orderId);
+    expect(fetched?.challanNo).toBe("CH-2026-0001");
+  });
+
+  it("gives the next order its own challan number", async () => {
+    const party = (await listParties())[1]!;
+    const orderId = await saveOrder({
+      partyId: party.id,
+      partyName: party.name,
+      brokerId: null,
+      brokerName: null,
+      date: "2026-07-11",
+      status: "packed",
+      note: null,
+      discount: 0,
+      received: 0,
+      lines: [{ itemId: null, itemName: "Haldi", bags: 1, qty: 30, rate: 148 }],
+    });
+    const challan = await saveChallan({
+      orderId,
+      date: "2026-07-11",
+      transporterId: null,
+      transporterName: null,
+      transporterPhone: null,
+      vehicleNo: null,
+      driverName: null,
+      driverPhone: null,
+      lrNo: null,
+      destination: null,
+      note: null,
+      showRates: true,
+    });
+    expect(challan.challanNo).toBe("CH-2026-0002");
+  });
+
+  it("goes with the order when the order is deleted", async () => {
+    const party = (await listParties())[2]!;
+    const orderId = await saveOrder({
+      partyId: party.id,
+      partyName: party.name,
+      brokerId: null,
+      brokerName: null,
+      date: "2026-07-12",
+      status: "packed",
+      note: null,
+      discount: 0,
+      received: 0,
+      lines: [{ itemId: null, itemName: "Dhaniya", bags: 1, qty: 30, rate: 165 }],
+    });
+    await saveChallan({
+      orderId,
+      date: "2026-07-12",
+      transporterId: null,
+      transporterName: null,
+      transporterPhone: null,
+      vehicleNo: "MP 09 ZZ 1111",
+      driverName: null,
+      driverPhone: null,
+      lrNo: null,
+      destination: null,
+      note: null,
+      showRates: true,
+    });
+    expect(await getChallanForOrder(orderId)).not.toBeNull();
+
+    await deleteOrder(orderId);
+    expect(await getChallanForOrder(orderId)).toBeNull();
+  });
+
+  it("keeps a challan's transporter name after the transporter is deleted", async () => {
+    const { deleteTransporter } = await import("../src/db/queries");
+    const orders = await listOrders({ from: "2026-07-10", to: "2026-07-10" });
+    const withChallan = orders[0];
+    if (!withChallan) return;
+    const before = await getChallanForOrder(withChallan.id);
+    if (!before?.transporterId) return;
+
+    await deleteTransporter(before.transporterId);
+    const after = await getChallanForOrder(withChallan.id);
+    expect(after?.transporterName).toBe(before.transporterName);
+    expect(after?.transporterId).toBeNull();
+  });
+
+  it("can be torn up without touching the order", async () => {
+    const orders = await listOrders({ from: "2026-07-11", to: "2026-07-11" });
+    const target = orders[0]!;
+    const challan = await getChallanForOrder(target.id);
+    expect(challan).not.toBeNull();
+
+    await deleteChallan(challan!.id);
+    expect(await getChallanForOrder(target.id)).toBeNull();
+    expect(await getOrder(target.id)).not.toBeNull();
   });
 });

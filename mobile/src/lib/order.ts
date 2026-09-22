@@ -101,13 +101,26 @@ export function validateDraft(input: {
   return { ok: errors.length === 0, errors };
 }
 
-/** ORD-2026-0007: sortable, readable aloud on the phone, and unique per year
- *  without needing a counter table. */
-export function nextOrderNo(lastOrderNo: string | null, date: string): string {
+/** ORD-2026-0007, CH-2026-0007: sortable, readable aloud down a phone line,
+ *  and unique per year without needing a counter table. A number from another
+ *  year, or one this app did not write, starts the series again at 1. */
+export function nextDocNo(
+  prefix: string,
+  lastNo: string | null,
+  date: string,
+): string {
   const year = date.slice(0, 4);
-  const match = lastOrderNo?.match(/^ORD-(\d{4})-(\d+)$/);
+  const match = lastNo?.match(new RegExp(`^${prefix}-(\\d{4})-(\\d+)$`));
   const next = match && match[1] === year ? Number(match[2]) + 1 : 1;
-  return `ORD-${year}-${String(next).padStart(4, "0")}`;
+  return `${prefix}-${year}-${String(next).padStart(4, "0")}`;
+}
+
+export function nextOrderNo(lastOrderNo: string | null, date: string): string {
+  return nextDocNo("ORD", lastOrderNo, date);
+}
+
+export function nextChallanNo(lastChallanNo: string | null, date: string): string {
+  return nextDocNo("CH", lastChallanNo, date);
 }
 
 export function statusLabel(status: OrderStatus): string {

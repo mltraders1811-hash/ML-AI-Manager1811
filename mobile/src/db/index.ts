@@ -33,7 +33,10 @@ async function open(): Promise<SQLite.SQLiteDatabase> {
   return db;
 }
 
-async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
+/** Exported so the upgrade path can be tested against a database built at an
+ *  older version: a migration that drops a shop's order book is the worst bug
+ *  this app could ship. */
+export async function migrate(db: SQLite.SQLiteDatabase): Promise<void> {
   const row = await db.getFirstAsync<{ user_version: number }>(
     "PRAGMA user_version",
   );

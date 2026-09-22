@@ -23,6 +23,7 @@ import {
 import {
   addPayment,
   deleteOrder,
+  getChallanForOrder,
   getOrder,
   getParty,
   setOrderStatus,
@@ -52,11 +53,12 @@ export default function OrderDetailScreen() {
     if (!id) return null;
     const order = await getOrder(id);
     if (!order) return null;
-    const [party, shopName] = await Promise.all([
+    const [party, shopName, challan] = await Promise.all([
       getParty(order.partyId),
       getShopName(),
+      getChallanForOrder(order.id),
     ]);
-    return { order, party, shopName };
+    return { order, party, shopName, challan };
   }, [id]);
 
   if (loading && !data) return <Loading />;
@@ -72,7 +74,7 @@ export default function OrderDetailScreen() {
     );
   }
 
-  const { order, party, shopName } = data;
+  const { order, party, shopName, challan } = data;
   const pay = paymentStatus(order.total, order.received);
   const next = nextStatus(order.status);
   const message = buildOrderMessage(order, shopName);
@@ -263,13 +265,51 @@ export default function OrderDetailScreen() {
         </Card>
       ) : null}
 
+      {order.status !== "cancelled" ? (
+        <Card>
+          <Text style={s.sectionTitle}>Delivery challan</Text>
+          <Text style={s.hint}>
+            {challan
+              ? `${challan.challanNo}${challan.vehicleNo ? ` · ${challan.vehicleNo}` : ""}${
+                  challan.transporterName ? ` · ${challan.transporterName}` : ""
+                }`
+              : "The paper that goes with the gadi. Print it for the driver, or send it to the transporter."}
+          </Text>
+          <Button
+            title={challan ? "Open challan" : "Make challan"}
+            icon="document-text-outline"
+            variant={challan ? "secondary" : "primary"}
+            onPress={() => router.push(`/challan/${order.id}`)}
+          />
+        </Card>
+      ) : null}
+
       <Card>
         <Text style={s.sectionTitle}>Order status</Text>
         {next ? (
           <Button
             title={`Mark ${statusLabel(next).toLowerCase()}`}
             icon="arrow-forward-circle"
-            onPress={() => void runBusy(() => setOrderStatus(order.id, next))}
+            onPress={() =>
+              void runBusy(async () => {
+                await setOrderStatus(order.id, next);
+                // Goods going out want a challan with them, and asking here
+                // saves remembering to come back for it.
+                if (next === "delivered" && !challan) {
+                  Alert.alert(
+                    "Make a challan?",
+                    "The gadi needs a delivery challan to carry with the goods.",
+                    [
+                      { text: "Not now", style: "cancel" },
+                      {
+                        text: "Make challan",
+                        onPress: () => router.push(`/challan/${order.id}`),
+                      },
+                    ],
+                  );
+                }
+              })
+            }
             loading={busy}
           />
         ) : (

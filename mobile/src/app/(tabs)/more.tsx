@@ -11,12 +11,16 @@ import { exportBackup, restoreBackup } from "../../db/backup";
 import { loadSampleOrders, sampleOrdersLoaded } from "../../db/seed";
 import { shareTextFile } from "../../lib/export";
 import { todayISO } from "../../lib/date";
-import { getShopName, setShopName } from "../../lib/settings";
+import { getShopProfile, saveShopProfile } from "../../lib/settings";
 import { colors, font, radius, spacing, typeface } from "../../theme";
 
 export default function MoreScreen() {
   const router = useRouter();
   const [shopName, setName] = useState("");
+  // The rest of the letterhead a printed challan needs.
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [gstin, setGstin] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [samplesDone, setSamplesDone] = useState(false);
@@ -24,10 +28,13 @@ export default function MoreScreen() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [name, db] = await Promise.all([getShopName(), getDb()]);
+      const [profile, db] = await Promise.all([getShopProfile(), getDb()]);
       const done = await sampleOrdersLoaded(db);
       if (!alive) return;
-      setName(name);
+      setName(profile.name);
+      setAddress(profile.address);
+      setPhone(profile.phone);
+      setGstin(profile.gstin);
       setSamplesDone(done);
       setLoading(false);
     })();
@@ -36,9 +43,12 @@ export default function MoreScreen() {
     };
   }, []);
 
-  const onSaveName = async () => {
-    await setShopName(shopName);
-    Alert.alert("Saved", "This name goes at the top of every order message.");
+  const onSaveShop = async () => {
+    await saveShopProfile({ name: shopName, address, phone, gstin });
+    Alert.alert(
+      "Saved",
+      "These go at the top of every order message and printed challan.",
+    );
   };
 
   const onBackup = async () => {
@@ -152,9 +162,31 @@ export default function MoreScreen() {
           onChangeText={setName}
           placeholder="Your shop's name"
           hint="Appears at the top of the WhatsApp order message."
+        />
+        <Field
+          label="Address"
+          value={address}
+          onChangeText={setAddress}
+          placeholder="Market, town"
+          hint="Printed in the challan letterhead."
+        />
+        <Field
+          label="Phone"
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="Shop phone number"
+          keyboardType="phone-pad"
+        />
+        <Field
+          label="GSTIN"
+          value={gstin}
+          onChangeText={setGstin}
+          placeholder="Leave blank if not registered"
+          autoCapitalize="characters"
+          hint="Left off the challan when blank."
           style={s.lastField}
         />
-        <Button title="Save" onPress={() => void onSaveName()} variant="secondary" />
+        <Button title="Save" onPress={() => void onSaveShop()} variant="secondary" />
       </Card>
 
       <SectionHeader title="Manage" />
@@ -167,6 +199,11 @@ export default function MoreScreen() {
         icon="people-circle"
         label="Brokers and commission"
         onPress={() => router.push("/brokers")}
+      />
+      <LinkRow
+        icon="bus"
+        label="Transporters"
+        onPress={() => router.push("/transporters")}
       />
 
       <SectionHeader title="Backup" />
