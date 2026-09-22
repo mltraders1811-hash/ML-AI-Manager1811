@@ -40,7 +40,7 @@ import {
 } from "../../lib/order";
 import { useQuery } from "../../hooks/useQuery";
 import { getShopName } from "../../lib/settings";
-import { colors, font, spacing } from "../../theme";
+import { colors, font, spacing, typeface } from "../../theme";
 
 export default function OrderDetailScreen() {
   const router = useRouter();
@@ -215,7 +215,7 @@ export default function OrderDetailScreen() {
           <Row left="Received" right={formatINR(order.received)} />
         ) : null}
         {order.balance > 0 && order.status !== "cancelled" ? (
-          <Row left="Balance due" right={formatINR(order.balance)} strong />
+          <Row left="Balance due" right={formatINR(order.balance)} strong tone="danger" />
         ) : null}
         <Divider />
         <Row
@@ -327,14 +327,14 @@ const s = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   headerRow: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.md },
   headerLeft: { flex: 1, gap: 2 },
-  party: { fontSize: font.h2, fontWeight: "800", color: colors.text },
-  meta: { fontSize: font.small, color: colors.textMuted },
+  party: { fontSize: font.h2, fontFamily: typeface.heavy, color: colors.text },
+  meta: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
   badges: { gap: spacing.xs, alignItems: "flex-end" },
   contactRow: { flexDirection: "row", gap: spacing.sm },
   flex: { flex: 1 },
   sectionTitle: {
     fontSize: font.h3,
-    fontWeight: "700",
+    fontFamily: typeface.bold,
     color: colors.text,
     marginBottom: spacing.sm,
   },
@@ -345,11 +345,11 @@ const s = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   itemLeft: { flex: 1, gap: 2 },
-  itemName: { fontSize: font.body, fontWeight: "600", color: colors.text },
-  itemMeta: { fontSize: font.small, color: colors.textMuted },
-  itemAmount: { fontSize: font.body, fontWeight: "700", color: colors.text },
-  note: { fontSize: font.body, color: colors.text, lineHeight: 21 },
-  hint: { fontSize: font.small, color: colors.textMuted, marginBottom: spacing.sm },
+  itemName: { fontSize: font.body, fontFamily: typeface.semibold, color: colors.text },
+  itemMeta: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
+  itemAmount: { fontSize: font.body, fontFamily: typeface.bold, color: colors.text },
+  note: { fontSize: font.body, fontFamily: typeface.regular, color: colors.text, lineHeight: 21 },
+  hint: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted, marginBottom: spacing.sm },
   payRow: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start" },
   payButton: { width: 96 },
   spaced: { marginTop: spacing.sm },

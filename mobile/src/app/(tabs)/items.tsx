@@ -22,7 +22,7 @@ import { deleteItem, listItems, saveItem } from "../../db/queries";
 import { formatINR, parseAmount } from "../../lib/money";
 import { useQuery } from "../../hooks/useQuery";
 import type { Item } from "../../lib/types";
-import { colors, font, spacing } from "../../theme";
+import { colors, font, spacing, typeface } from "../../theme";
 
 export default function ItemsScreen() {
   const [search, setSearch] = useState("");
@@ -201,10 +201,10 @@ const s = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   left: { flex: 1, gap: 2 },
   right: { alignItems: "flex-end" },
-  name: { fontSize: font.h3, fontWeight: "700", color: colors.text },
-  meta: { fontSize: font.small, color: colors.textMuted },
-  rate: { fontSize: font.h3, fontWeight: "800", color: colors.primary },
-  rateLabel: { fontSize: font.tiny, color: colors.textMuted },
+  name: { fontSize: font.h3, fontFamily: typeface.bold, color: colors.text },
+  meta: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
+  rate: { fontSize: font.h3, fontFamily: typeface.heavy, color: colors.primary },
+  rateLabel: { fontSize: font.tiny, fontFamily: typeface.regular, color: colors.textMuted },
   footer: {
     padding: spacing.lg,
     borderTopWidth: 1,

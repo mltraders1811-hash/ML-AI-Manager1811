@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { colors, font, radius, spacing } from "../theme";
+import { colors, font, radius, spacing, typeface } from "../theme";
 import { Button, EmptyState, SearchBar } from "./ui";
 
 export interface PickerOption {
@@ -149,7 +149,7 @@ const s = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  title: { fontSize: font.h2, fontWeight: "700", color: colors.text },
+  title: { fontSize: font.h2, fontFamily: typeface.bold, color: colors.text },
   searchWrap: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   list: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm },
   option: {
@@ -164,8 +164,8 @@ const s = StyleSheet.create({
     minHeight: 56,
   },
   optionText: { flex: 1, gap: 2 },
-  optionLabel: { fontSize: font.body, fontWeight: "600", color: colors.text },
-  optionSub: { fontSize: font.small, color: colors.textMuted },
+  optionLabel: { fontSize: font.body, fontFamily: typeface.semibold, color: colors.text },
+  optionSub: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
   pressed: { opacity: 0.7 },
   footer: {
     padding: spacing.lg,

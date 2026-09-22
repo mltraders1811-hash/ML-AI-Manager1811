@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, font, radius, spacing } from "../theme";
+import { colors, font, radius, spacing, typeface } from "../theme";
 
 /** A headline number. Kept flat and wide so four of them fit on a small
  *  phone without turning into unreadable boxes. */
@@ -67,10 +67,10 @@ const s = StyleSheet.create({
   },
   label: {
     fontSize: font.tiny,
-    fontWeight: "700",
+    fontFamily: typeface.bold,
     color: colors.textMuted,
     textTransform: "uppercase",
   },
-  value: { fontSize: font.h2, fontWeight: "800", color: colors.text },
-  sub: { fontSize: font.small, color: colors.textMuted },
+  value: { fontSize: font.h2, fontFamily: typeface.heavy, color: colors.text },
+  sub: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
 });

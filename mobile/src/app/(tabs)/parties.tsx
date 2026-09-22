@@ -13,7 +13,7 @@ import {
 import { listPartiesWithBalance } from "../../db/queries";
 import { formatINR } from "../../lib/money";
 import { useQuery } from "../../hooks/useQuery";
-import { colors, font, spacing } from "../../theme";
+import { colors, font, spacing, typeface } from "../../theme";
 
 export default function PartiesScreen() {
   const router = useRouter();
@@ -97,16 +97,16 @@ export default function PartiesScreen() {
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: { padding: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
-  summary: { fontSize: font.small, color: colors.danger, fontWeight: "700" },
+  summary: { fontSize: font.small, color: colors.danger, fontFamily: typeface.bold },
   list: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxl },
   card: { padding: spacing.md },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   left: { flex: 1, gap: 2 },
   right: { alignItems: "flex-end" },
-  name: { fontSize: font.h3, fontWeight: "700", color: colors.text },
-  meta: { fontSize: font.small, color: colors.textMuted },
-  due: { fontSize: font.h3, fontWeight: "800", color: colors.danger },
-  dueLabel: { fontSize: font.tiny, color: colors.textMuted, textTransform: "uppercase" },
+  name: { fontSize: font.h3, fontFamily: typeface.bold, color: colors.text },
+  meta: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
+  due: { fontSize: font.h3, fontFamily: typeface.heavy, color: colors.danger },
+  dueLabel: { fontSize: font.tiny, fontFamily: typeface.regular, color: colors.textMuted, textTransform: "uppercase" },
   footer: {
     padding: spacing.lg,
     borderTopWidth: 1,

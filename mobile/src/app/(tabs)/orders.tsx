@@ -8,7 +8,7 @@ import { listOrders } from "../../db/queries";
 import { formatINR } from "../../lib/money";
 import { useQuery } from "../../hooks/useQuery";
 import type { OrderStatus } from "../../lib/types";
-import { colors, font, spacing } from "../../theme";
+import { colors, font, spacing, typeface } from "../../theme";
 
 type Filter = OrderStatus | "all" | "unpaid";
 
@@ -135,8 +135,8 @@ const s = StyleSheet.create({
     paddingBottom: spacing.sm,
     gap: spacing.md,
   },
-  summaryText: { fontSize: font.small, color: colors.textMuted, fontWeight: "600" },
-  summaryDue: { fontSize: font.small, color: colors.danger, fontWeight: "700" },
+  summaryText: { fontSize: font.small, color: colors.textMuted, fontFamily: typeface.semibold },
+  summaryDue: { fontSize: font.small, color: colors.danger, fontFamily: typeface.bold },
   footer: {
     padding: spacing.lg,
     borderTopWidth: 1,

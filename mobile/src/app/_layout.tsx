@@ -1,3 +1,10 @@
+import {
+  Manrope_500Medium,
+  Manrope_600SemiBold,
+  Manrope_700Bold,
+  Manrope_800ExtraBold,
+  useFonts,
+} from "@expo-google-fonts/manrope";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useState } from "react";
@@ -6,7 +13,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { Button, Loading } from "../components/ui";
 import { getDb } from "../db";
-import { colors, font, spacing } from "../theme";
+import { colors, font, spacing, typeface } from "../theme";
 
 export default function RootLayout() {
   // Migrations and the first-run seed both happen inside getDb(). Opening a
@@ -14,6 +21,17 @@ export default function RootLayout() {
   // app waits once, here.
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Every text style names a Manrope family by weight, so a screen drawn
+  // before they load would fall back to the system font and then jump.
+  // A font that fails to load is not worth blocking the app over, though:
+  // the system font is a worse bill than a spinner that never ends.
+  const [fontsLoaded, fontError] = useFonts({
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
+    Manrope_800ExtraBold,
+  });
 
   const open = useCallback(() => {
     setError(null);
@@ -42,7 +60,7 @@ export default function RootLayout() {
     );
   }
 
-  if (!ready) {
+  if (!ready || (!fontsLoaded && !fontError)) {
     return (
       <SafeAreaProvider>
         <StatusBar style="dark" />
@@ -58,7 +76,7 @@ export default function RootLayout() {
         screenOptions={{
           headerStyle: { backgroundColor: colors.primary },
           headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: "700" },
+          headerTitleStyle: { fontFamily: typeface.bold },
           contentStyle: { backgroundColor: colors.bg },
         }}
       >
@@ -81,6 +99,15 @@ const s = StyleSheet.create({
     gap: spacing.md,
     backgroundColor: colors.bg,
   },
-  errorTitle: { fontSize: font.h2, fontWeight: "800", color: colors.text },
-  errorBody: { fontSize: font.body, color: colors.textMuted, lineHeight: 21 },
+  errorTitle: {
+    fontSize: font.h2,
+    fontFamily: typeface.heavy,
+    color: colors.text,
+  },
+  errorBody: {
+    fontSize: font.body,
+    fontFamily: typeface.regular,
+    color: colors.textMuted,
+    lineHeight: 21,
+  },
 });

@@ -12,7 +12,7 @@ import { loadSampleOrders, sampleOrdersLoaded } from "../../db/seed";
 import { shareTextFile } from "../../lib/export";
 import { todayISO } from "../../lib/date";
 import { getShopName, setShopName } from "../../lib/settings";
-import { colors, font, radius, spacing } from "../../theme";
+import { colors, font, radius, spacing, typeface } from "../../theme";
 
 export default function MoreScreen() {
   const router = useRouter();
@@ -241,7 +241,7 @@ function LinkRow({
 const s = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm },
   lastField: { marginBottom: spacing.md },
-  hint: { fontSize: font.small, color: colors.textMuted, marginBottom: spacing.md, lineHeight: 19 },
+  hint: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted, marginBottom: spacing.md, lineHeight: 19 },
   spaced: { marginTop: spacing.sm },
   linkRow: {
     flexDirection: "row",
@@ -255,10 +255,11 @@ const s = StyleSheet.create({
     minHeight: 56,
   },
   pressed: { opacity: 0.7 },
-  linkLabel: { flex: 1, fontSize: font.body, fontWeight: "600", color: colors.text },
+  linkLabel: { flex: 1, fontSize: font.body, fontFamily: typeface.semibold, color: colors.text },
   version: {
     textAlign: "center",
     fontSize: font.tiny,
+    fontFamily: typeface.regular,
     color: colors.textFaint,
     marginTop: spacing.xl,
   },

@@ -20,7 +20,7 @@ import {
 import { monthLabel, monthRange, todayISO } from "../../lib/date";
 import { formatINR, formatNumber } from "../../lib/money";
 import { useQuery } from "../../hooks/useQuery";
-import { colors, font, spacing } from "../../theme";
+import { colors, font, spacing, typeface } from "../../theme";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -172,9 +172,9 @@ const s = StyleSheet.create({
   },
   tableRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
   tableNameWrap: { flex: 1 },
-  tableName: { flex: 1, fontSize: font.body, color: colors.text, fontWeight: "600" },
-  tableSub: { fontSize: font.small, color: colors.textMuted },
-  tableValue: { fontSize: font.body, fontWeight: "700", color: colors.text },
+  tableName: { flex: 1, fontSize: font.body, color: colors.text, fontFamily: typeface.semibold },
+  tableSub: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
+  tableValue: { fontSize: font.body, fontFamily: typeface.bold, color: colors.text },
   linkCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -182,5 +182,5 @@ const s = StyleSheet.create({
     marginTop: spacing.lg,
     padding: spacing.lg,
   },
-  linkText: { flex: 1, fontSize: font.body, fontWeight: "600", color: colors.text },
+  linkText: { flex: 1, fontSize: font.body, fontFamily: typeface.semibold, color: colors.text },
 });

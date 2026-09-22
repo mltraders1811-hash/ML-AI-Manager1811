@@ -14,7 +14,7 @@ import { csvFileName, ordersToCsv } from "../lib/csv";
 import { shareTextFile } from "../lib/export";
 import { formatINR, formatNumber } from "../lib/money";
 import { useQuery } from "../hooks/useQuery";
-import { colors, font, spacing } from "../theme";
+import { colors, font, spacing, typeface } from "../theme";
 
 type RangeKey = "month" | "lastMonth" | "week" | "all";
 
@@ -205,12 +205,12 @@ const s = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   rangeLabel: {
     fontSize: font.small,
-    fontWeight: "700",
+    fontFamily: typeface.bold,
     color: colors.textMuted,
     textTransform: "uppercase",
     marginBottom: spacing.sm,
   },
-  hint: { fontSize: font.small, color: colors.textMuted },
+  hint: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
   tableCard: { padding: spacing.md },
   tableRow: {
     flexDirection: "row",
@@ -221,7 +221,7 @@ const s = StyleSheet.create({
   },
   tableBorder: { borderTopWidth: 1, borderTopColor: colors.border },
   tableLeft: { flex: 1 },
-  tableName: { fontSize: font.body, fontWeight: "600", color: colors.text },
-  tableSub: { fontSize: font.small, color: colors.textMuted },
-  tableValue: { fontSize: font.body, fontWeight: "700", color: colors.text },
+  tableName: { fontSize: font.body, fontFamily: typeface.semibold, color: colors.text },
+  tableSub: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
+  tableValue: { fontSize: font.body, fontFamily: typeface.bold, color: colors.text },
 });

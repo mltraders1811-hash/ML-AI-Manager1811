@@ -51,7 +51,7 @@ import {
   type OrderStatus,
   type Party,
 } from "../../lib/types";
-import { colors, font, radius, spacing } from "../../theme";
+import { colors, font, radius, spacing, typeface } from "../../theme";
 
 const emptyLine = (): DraftLine => ({
   key: uid("d_"),
@@ -511,7 +511,7 @@ const s = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.md },
   heading: {
     fontSize: font.h3,
-    fontWeight: "700",
+    fontFamily: typeface.bold,
     color: colors.text,
     marginTop: spacing.sm,
   },
@@ -525,7 +525,7 @@ const s = StyleSheet.create({
   },
   lineNumber: {
     fontSize: font.small,
-    fontWeight: "700",
+    fontFamily: typeface.bold,
     color: colors.textMuted,
     textTransform: "uppercase",
   },
@@ -541,8 +541,8 @@ const s = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  lineTotalLabel: { fontSize: font.small, fontWeight: "600", color: colors.primaryDark },
-  lineTotalValue: { fontSize: font.h3, fontWeight: "800", color: colors.primaryDark },
+  lineTotalLabel: { fontSize: font.small, fontFamily: typeface.semibold, color: colors.primaryDark },
+  lineTotalValue: { fontSize: font.h3, fontFamily: typeface.heavy, color: colors.primaryDark },
   addLine: {
     flexDirection: "row",
     alignItems: "center",
@@ -554,7 +554,7 @@ const s = StyleSheet.create({
     borderStyle: "dashed",
     borderColor: colors.primary,
   },
-  addLineText: { fontSize: font.body, fontWeight: "700", color: colors.primary },
+  addLineText: { fontSize: font.body, fontFamily: typeface.bold, color: colors.primary },
   pressed: { opacity: 0.7 },
   footer: {
     padding: spacing.lg,
@@ -565,7 +565,7 @@ const s = StyleSheet.create({
   },
   footerTotals: { flexDirection: "row", justifyContent: "space-between" },
   footerRight: { alignItems: "flex-end" },
-  footerLabel: { fontSize: font.small, color: colors.textMuted, fontWeight: "600" },
-  footerValue: { fontSize: font.h1, fontWeight: "800", color: colors.text },
-  footerBalance: { fontSize: font.h1, fontWeight: "800", color: colors.danger },
+  footerLabel: { fontSize: font.small, color: colors.textMuted, fontFamily: typeface.semibold },
+  footerValue: { fontSize: font.h1, fontFamily: typeface.heavy, color: colors.text },
+  footerBalance: { fontSize: font.h1, fontFamily: typeface.heavy, color: colors.danger },
 });

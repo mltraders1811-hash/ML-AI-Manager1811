@@ -4,7 +4,7 @@ import { relativeDay } from "../lib/date";
 import { formatINR } from "../lib/money";
 import { paymentLabel, paymentStatus, statusLabel } from "../lib/order";
 import type { Order } from "../lib/types";
-import { colors, font, spacing } from "../theme";
+import { colors, font, spacing, typeface } from "../theme";
 import { Badge, Card } from "./ui";
 
 /** One bill in a list: who, how much, and whether the money is in - which is
@@ -56,9 +56,9 @@ const styles = StyleSheet.create({
   card: { padding: spacing.md, gap: spacing.sm },
   top: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   left: { flex: 1, gap: 2 },
-  party: { fontSize: font.h3, fontWeight: "700", color: colors.text },
-  meta: { fontSize: font.small, color: colors.textMuted },
-  total: { fontSize: font.h3, fontWeight: "800", color: colors.text },
+  party: { fontSize: font.h3, fontFamily: typeface.bold, color: colors.text },
+  meta: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
+  total: { fontSize: font.h3, fontFamily: typeface.heavy, color: colors.text },
   badges: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
-  due: { fontSize: font.small, fontWeight: "700", color: colors.danger },
+  due: { fontSize: font.small, fontFamily: typeface.bold, color: colors.danger },
 });

@@ -1,28 +1,45 @@
-/** One place for colour and spacing. The palette is deliberately high
- *  contrast: this app is used standing in a warehouse doorway in daylight. */
+/** One place for colour, type and spacing. The palette is deliberately high
+ *  contrast: this app is used standing in a warehouse doorway in daylight.
+ *
+ *  Brightness comes from the grounds, tints and badges rather than from the
+ *  fills - white text on a bright azure or coral button fails to read in
+ *  sunlight, so anything carrying white text stays deep enough to pass 4.5:1.
+ */
 export const colors = {
-  bg: "#F4F6F8",
+  bg: "#F0F9FF",
   surface: "#FFFFFF",
-  surfaceAlt: "#EEF2F5",
-  border: "#DCE3E8",
-  text: "#10181F",
-  textMuted: "#5B6B78",
-  textFaint: "#8A99A6",
+  surfaceAlt: "#E4F1FB",
+  border: "#D3E7F6",
+  text: "#0A1C2B",
+  textMuted: "#466276",
+  textFaint: "#7C93A6",
 
-  primary: "#0F766E",
-  primaryDark: "#0B5A54",
-  primarySoft: "#E2F3F0",
+  primary: "#0369A1",
+  primaryDark: "#075985",
+  primarySoft: "#D5ECFB",
 
-  danger: "#C22F2F",
-  dangerSoft: "#FBE9E9",
+  danger: "#E11D48",
+  dangerSoft: "#FFE3EA",
   warning: "#B45309",
-  warningSoft: "#FDF2E2",
-  success: "#15803D",
-  successSoft: "#E6F4EA",
-  info: "#1D4ED8",
-  infoSoft: "#E8EEFD",
+  warningSoft: "#FEEFD5",
+  success: "#047857",
+  successSoft: "#D7F5EB",
+  // Violet rather than blue: "packed" has to be tellable from the primary
+  // colour at a glance, and a blue badge on a blue-ish screen is not.
+  info: "#6D28D9",
+  infoSoft: "#EDE5FD",
 
   white: "#FFFFFF",
+} as const;
+
+/** React Native does not synthesize weights for a bundled font: `fontWeight`
+ *  on a custom family is ignored on Android, so each weight is its own family
+ *  and nothing in the app sets fontWeight. Loaded in src/app/_layout.tsx. */
+export const typeface = {
+  regular: "Manrope_500Medium",
+  semibold: "Manrope_600SemiBold",
+  bold: "Manrope_700Bold",
+  heavy: "Manrope_800ExtraBold",
 } as const;
 
 export const spacing = {
@@ -53,7 +70,7 @@ export const font = {
 /** Android has no shadow prop worth using; elevation is what actually draws. */
 export const shadow = {
   elevation: 2,
-  shadowColor: "#0B1B24",
+  shadowColor: "#0A1C2B",
   shadowOpacity: 0.08,
   shadowRadius: 8,
   shadowOffset: { width: 0, height: 2 },

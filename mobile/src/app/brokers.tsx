@@ -14,7 +14,7 @@ import { deleteBroker, listBrokers, saveBroker } from "../db/queries";
 import { parseAmount } from "../lib/money";
 import { useQuery } from "../hooks/useQuery";
 import type { Broker } from "../lib/types";
-import { colors, font, spacing } from "../theme";
+import { colors, font, spacing, typeface } from "../theme";
 
 export default function BrokersScreen() {
   const [editing, setEditing] = useState<Broker | "new" | null>(null);
@@ -154,8 +154,8 @@ const s = StyleSheet.create({
   list: { padding: spacing.lg, gap: spacing.sm },
   card: { padding: spacing.md },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  name: { fontSize: font.h3, fontWeight: "700", color: colors.text },
-  pct: { fontSize: font.body, fontWeight: "700", color: colors.primary },
+  name: { fontSize: font.h3, fontFamily: typeface.bold, color: colors.text },
+  pct: { fontSize: font.body, fontFamily: typeface.bold, color: colors.primary },
   footer: {
     padding: spacing.lg,
     borderTopWidth: 1,

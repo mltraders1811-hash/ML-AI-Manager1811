@@ -28,7 +28,7 @@ import {
 } from "../../db/queries";
 import { telLink, waLink } from "../../lib/message";
 import { formatINR } from "../../lib/money";
-import { colors, font, spacing } from "../../theme";
+import { colors, font, spacing, typeface } from "../../theme";
 import type { Order } from "../../lib/types";
 
 export default function PartyScreen() {
@@ -200,6 +200,7 @@ export default function PartyScreen() {
                 left="Outstanding"
                 right={formatINR(outstanding, { decimals: false })}
                 strong
+                tone={outstanding > 0 ? "danger" : undefined}
               />
             </Card>
 
@@ -245,6 +246,6 @@ const s = StyleSheet.create({
   contactRow: { flexDirection: "row", gap: spacing.sm },
   flex: { flex: 1 },
   list: { gap: spacing.sm },
-  empty: { fontSize: font.small, color: colors.textMuted },
+  empty: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
   delete: { marginTop: spacing.lg },
 });

@@ -11,7 +11,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { colors, font, radius, shadow, spacing, toneColors } from "../theme";
+import { colors, font, radius, shadow, spacing, toneColors, typeface } from "../theme";
 
 /* ------------------------------------------------------------------- text */
 
@@ -313,15 +313,20 @@ export function Row({
   left,
   right,
   strong,
+  tone,
 }: {
   left: string;
   right: string;
   strong?: boolean;
+  /** Colours both sides - for the one figure on a screen that is the reason
+   *  the screen was opened, such as what a party still owes. */
+  tone?: "danger";
 }) {
+  const toned = tone === "danger" ? { color: colors.danger } : null;
   return (
     <View style={s.row}>
-      <Text style={[s.rowLeft, strong && s.rowStrong]}>{left}</Text>
-      <Text style={[s.rowRight, strong && s.rowStrong]}>{right}</Text>
+      <Text style={[s.rowLeft, strong && s.rowStrong, toned]}>{left}</Text>
+      <Text style={[s.rowRight, strong && s.rowStrong, toned]}>{right}</Text>
     </View>
   );
 }
@@ -339,15 +344,15 @@ export function Loading() {
 }
 
 const s = StyleSheet.create({
-  title: { fontSize: font.h1, fontWeight: "700", color: colors.text },
-  subtitle: { fontSize: font.body, color: colors.textMuted },
+  title: { fontSize: font.h1, fontFamily: typeface.bold, color: colors.text },
+  subtitle: { fontSize: font.body, fontFamily: typeface.regular, color: colors.textMuted },
   label: {
     fontSize: font.small,
-    fontWeight: "600",
+    fontFamily: typeface.semibold,
     color: colors.textMuted,
     marginBottom: spacing.xs,
   },
-  muted: { fontSize: font.small, color: colors.textMuted },
+  muted: { fontSize: font.small, fontFamily: typeface.regular, color: colors.textMuted },
 
   card: {
     backgroundColor: colors.surface,
@@ -366,8 +371,8 @@ const s = StyleSheet.create({
     marginBottom: spacing.sm,
     marginTop: spacing.lg,
   },
-  sectionTitle: { fontSize: font.h3, fontWeight: "700", color: colors.text },
-  sectionAction: { fontSize: font.small, fontWeight: "600", color: colors.primary },
+  sectionTitle: { fontSize: font.h3, fontFamily: typeface.bold, color: colors.text },
+  sectionAction: { fontSize: font.small, fontFamily: typeface.semibold, color: colors.primary },
 
   button: {
     flexDirection: "row",
@@ -381,7 +386,7 @@ const s = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
   },
-  buttonText: { fontSize: font.body, fontWeight: "700" },
+  buttonText: { fontSize: font.body, fontFamily: typeface.bold },
   buttonDisabled: { opacity: 0.45 },
   iconButton: { padding: spacing.xs },
 
@@ -394,13 +399,14 @@ const s = StyleSheet.create({
     paddingHorizontal: spacing.md,
     minHeight: 48,
     fontSize: font.body,
+    fontFamily: typeface.regular,
     color: colors.text,
   },
   inputMultiline: { minHeight: 88, paddingTop: spacing.md, textAlignVertical: "top" },
-  hint: { fontSize: font.tiny, color: colors.textFaint, marginTop: spacing.xs },
+  hint: { fontSize: font.tiny, fontFamily: typeface.regular, color: colors.textFaint, marginTop: spacing.xs },
   select: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  selectValue: { fontSize: font.body, color: colors.text, flex: 1 },
-  selectPlaceholder: { fontSize: font.body, color: colors.textFaint, flex: 1 },
+  selectValue: { fontSize: font.body, fontFamily: typeface.regular, color: colors.text, flex: 1 },
+  selectPlaceholder: { fontSize: font.body, fontFamily: typeface.regular, color: colors.textFaint, flex: 1 },
 
   searchBar: {
     flexDirection: "row",
@@ -413,7 +419,7 @@ const s = StyleSheet.create({
     paddingHorizontal: spacing.md,
     minHeight: 46,
   },
-  searchInput: { flex: 1, fontSize: font.body, color: colors.text, paddingVertical: 0 },
+  searchInput: { flex: 1, fontSize: font.body, fontFamily: typeface.regular, color: colors.text, paddingVertical: 0 },
 
   chip: {
     paddingHorizontal: spacing.md,
@@ -424,7 +430,7 @@ const s = StyleSheet.create({
     borderColor: colors.border,
   },
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontSize: font.small, fontWeight: "600", color: colors.textMuted },
+  chipText: { fontSize: font.small, fontFamily: typeface.semibold, color: colors.textMuted },
   chipTextSelected: { color: colors.white },
 
   badge: {
@@ -433,17 +439,18 @@ const s = StyleSheet.create({
     borderRadius: radius.sm,
     alignSelf: "flex-start",
   },
-  badgeText: { fontSize: font.tiny, fontWeight: "700", textTransform: "uppercase" },
+  badgeText: { fontSize: font.tiny, fontFamily: typeface.bold, textTransform: "uppercase" },
 
   empty: { alignItems: "center", paddingVertical: spacing.xxl, gap: spacing.xs },
   emptyTitle: {
     fontSize: font.h3,
-    fontWeight: "700",
+    fontFamily: typeface.bold,
     color: colors.text,
     marginTop: spacing.sm,
   },
   emptyMessage: {
     fontSize: font.small,
+    fontFamily: typeface.regular,
     color: colors.textMuted,
     textAlign: "center",
     paddingHorizontal: spacing.xl,
@@ -456,9 +463,9 @@ const s = StyleSheet.create({
     paddingVertical: spacing.xs,
     gap: spacing.md,
   },
-  rowLeft: { fontSize: font.body, color: colors.textMuted, flexShrink: 1 },
-  rowRight: { fontSize: font.body, color: colors.text, fontWeight: "600" },
-  rowStrong: { fontSize: font.h3, fontWeight: "800", color: colors.text },
+  rowLeft: { fontSize: font.body, fontFamily: typeface.regular, color: colors.textMuted, flexShrink: 1 },
+  rowRight: { fontSize: font.body, color: colors.text, fontFamily: typeface.semibold },
+  rowStrong: { fontSize: font.h3, fontFamily: typeface.heavy, color: colors.text },
 
   divider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.md },
   loading: { paddingVertical: spacing.xxl, alignItems: "center" },
