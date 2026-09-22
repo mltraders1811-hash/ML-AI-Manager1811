@@ -3,6 +3,13 @@ import { formatINR, formatNumber, formatQty } from "./money";
 import { orderBags, orderKg } from "./order";
 import type { Challan, OrderLine, OrderWithLines, Party, ShopProfile } from "./types";
 
+/** A6 in points at 72 PPI, which is the unit expo-print measures a page in.
+ *  105mm x 148mm -> 105/25.4*72 = 297.6, 148/25.4*72 = 419.5. Without this
+ *  expo-print lays the page out on US Letter (612x792) and the CSS @page size
+ *  does not save it - the challan would print small in the corner of a big
+ *  sheet. */
+export const A6_PAGE = { width: 298, height: 420 } as const;
+
 export interface ChallanDoc {
   challan: Challan;
   order: OrderWithLines;
@@ -41,25 +48,19 @@ export function packingLabel(line: OrderLine): string {
     : `${formatQty(line.bags)} bag`;
 }
 
-function field(label: string, value: string | null | undefined): string {
-  const clean = (value ?? "").trim();
-  if (!clean) return "";
-  return `<div class="f"><span class="k">${escapeHtml(label)}</span><span class="v">${escapeHtml(clean)}</span></div>`;
-}
-
-/** One copy of the challan. The sheet carries two of these: the transporter
- *  keeps one and signs the other, which comes back to the shop as proof the
- *  goods were handed over. */
+/** One copy, one A6 page. Deliberately close to the handwritten pad: who it
+ *  is for, where it is going, how many bags of what, the total in nag, and
+ *  which lorry took it. Nothing else fits on A6 and nothing else is used. */
 function copyBlock(doc: ChallanDoc, label: string, signNote: string): string {
-  const { challan, order, party, shop } = doc;
+  const { challan, order, shop } = doc;
   const showRates = challan.showRates;
 
   const rows = order.lines
     .map((line) => {
+      const per = bagWeight(line);
       const cells = [
         `<td class="bags">${line.bags ? formatQty(line.bags) : "-"}</td>`,
-        `<td>${escapeHtml(line.itemName)}</td>`,
-        `<td class="num">${escapeHtml(packingLabel(line))}</td>`,
+        `<td>${escapeHtml(line.itemName)}${per ? ` <span class="pack">${formatNumber(per, 0)} kg</span>` : ""}</td>`,
         `<td class="num">${formatQty(line.qty)}</td>`,
       ];
       if (showRates) {
@@ -69,33 +70,37 @@ function copyBlock(doc: ChallanDoc, label: string, signNote: string): string {
     })
     .join("");
 
-  const cols = showRates ? 5 : 4;
+  const cols = showRates ? 4 : 3;
   const head = showRates
-    ? "<th>Bags</th><th>Item</th><th>Packing</th><th>Kg</th><th>Amount</th>"
-    : "<th>Bags</th><th>Item</th><th>Packing</th><th>Kg</th>";
+    ? "<th>Bags</th><th>Item</th><th>Kg</th><th>Amount</th>"
+    : "<th>Bags</th><th>Item</th><th>Kg</th>";
+
+  // The lorry, on one line, skipping whatever was not filled in.
+  const transport = [
+    challan.transporterName,
+    challan.vehicleNo,
+    challan.lrNo ? `LR ${challan.lrNo}` : null,
+    challan.driverName
+      ? `${challan.driverName}${challan.driverPhone ? ` ${challan.driverPhone}` : ""}`
+      : null,
+  ]
+    .filter((part) => (part ?? "").trim().length > 0)
+    .map((part) => escapeHtml(part))
+    .join(" &middot; ");
 
   return `
   <section class="copy">
-    <div class="tag">${escapeHtml(label)}</div>
-
-    <div class="head">
-      <div class="shop">
-        <div class="name">${escapeHtml(shop.name)}</div>
-        ${shop.address ? `<div class="sub">${escapeHtml(shop.address)}</div>` : ""}
-        ${shop.phone ? `<div class="sub">Ph: ${escapeHtml(shop.phone)}</div>` : ""}
-        ${shop.gstin ? `<div class="sub">GSTIN: ${escapeHtml(shop.gstin)}</div>` : ""}
-      </div>
-      <div class="docno">
-        <div class="f"><span class="k">Challan</span><span class="v">${escapeHtml(challan.challanNo)}</span></div>
-        <div class="f"><span class="k">Date</span><span class="v">${escapeHtml(formatDate(challan.date))}</span></div>
-        <div class="f"><span class="k">Order</span><span class="v">${escapeHtml(order.orderNo)}</span></div>
+    <div class="top">
+      <div class="shop">${escapeHtml(shop.name)}</div>
+      <div class="doc">
+        <div>${escapeHtml(challan.challanNo)}</div>
+        <div>${escapeHtml(formatDate(challan.date))}</div>
       </div>
     </div>
 
     <div class="to">
       <div class="party">${escapeHtml(order.partyName)}</div>
       ${challan.destination ? `<div class="dest">${escapeHtml(challan.destination)}</div>` : ""}
-      ${party?.phone ? `<div class="sub">Ph: ${escapeHtml(party.phone)}</div>` : ""}
     </div>
 
     <table>
@@ -104,34 +109,26 @@ function copyBlock(doc: ChallanDoc, label: string, signNote: string): string {
         ${rows || `<tr><td colspan="${cols}">No items</td></tr>`}
         <tr class="total">
           <td class="bags">${formatQty(orderBags(order.lines))}</td>
-          <td>नग / bags</td>
-          <td class="num"></td>
+          <td>नग</td>
           <td class="num">${formatQty(orderKg(order.lines))}</td>
           ${showRates ? `<td class="num">${escapeHtml(formatINR(order.total))}</td>` : ""}
         </tr>
       </tbody>
     </table>
 
-    <div class="transport">
-      ${field("Transporter", challan.transporterName)}
-      ${field("Vehicle no.", challan.vehicleNo)}
-      ${field("LR / builty", challan.lrNo)}
-      ${field("Driver", challan.driverName)}
-      ${field("Driver ph.", challan.driverPhone)}
-    </div>
-
+    ${transport ? `<div class="transport">${transport}</div>` : ""}
     ${challan.note ? `<div class="note">${escapeHtml(challan.note)}</div>` : ""}
 
     <div class="sign">
-      <div class="line">Transporter's signature<div class="tiny">${escapeHtml(signNote)}</div></div>
-      <div class="line">For ${escapeHtml(shop.name)}</div>
+      <div class="line">Transporter's signature</div>
+      <div class="tag">${escapeHtml(label)} &middot; ${escapeHtml(signNote)}</div>
     </div>
   </section>`;
 }
 
-/** The printable challan: two identical copies on one A4 sheet with a cut
- *  line between them, which is the way it is done by hand today - the lorry
- *  takes one, signs the other, and the signed one comes back to the shop. */
+/** The printable challan: two A6 copies, one per page. The lorry takes the
+ *  first and signs the second, which comes back to the shop - which is how
+ *  the handwritten pad is already used. */
 export function buildChallanHtml(doc: ChallanDoc): string {
   return `<!doctype html>
 <html lang="en">
@@ -140,55 +137,45 @@ export function buildChallanHtml(doc: ChallanDoc): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Challan ${escapeHtml(doc.challan.challanNo)}</title>
 <style>
-  @page { size: A4 portrait; margin: 8mm; }
+  @page { size: A6 portrait; margin: 0; }
   * { box-sizing: border-box; }
   /* Item names get written in Hindi, so the stack has to reach a Devanagari
      face before it falls back to a Latin-only one and prints boxes. */
-  body { margin: 0; color: #111;
+  body { margin: 0; padding: 5mm; color: #111; font-size: 9pt;
          font-family: "Noto Sans Devanagari", "Noto Sans", Roboto, "Segoe UI", Arial, sans-serif; }
-  .copy { border: 1.2pt solid #111; padding: 4mm; position: relative; }
-  .cut { border-top: 1pt dashed #888; margin: 3mm 0; text-align: center;
-         font-size: 7.5pt; color: #888; letter-spacing: 1pt; }
-  .tag { position: absolute; top: 0; right: 0; background: #111; color: #fff;
-         font-size: 7.5pt; letter-spacing: 0.6pt; padding: 1mm 2.5mm; text-transform: uppercase; }
-  .head { display: flex; gap: 4mm; align-items: flex-start;
-          border-bottom: 1pt solid #111; padding-bottom: 2mm; }
-  .shop { flex: 1; }
-  .shop .name { font-size: 15pt; font-weight: bold; line-height: 1.15; }
-  .sub { font-size: 8.5pt; color: #333; }
-  .docno { min-width: 42mm; }
-  .f { display: flex; gap: 1.5mm; font-size: 9pt; line-height: 1.45; }
-  .k { color: #555; min-width: 19mm; }
-  .v { font-weight: bold; flex: 1; }
-  .to { padding: 2mm 0; }
-  .party { font-size: 14pt; font-weight: bold; line-height: 1.2; }
+  .copy { padding: 0; }
+  /* Each copy is its own page, so nothing has to be cut to size. */
+  .copy + .copy { page-break-before: always; }
+  .top { display: flex; align-items: flex-start; gap: 3mm;
+         border-bottom: 1pt solid #111; padding-bottom: 1.5mm; }
+  .shop { flex: 1; font-size: 13pt; font-weight: bold; line-height: 1.1; }
+  .doc { text-align: right; font-size: 8.5pt; font-weight: bold; line-height: 1.35; }
+  .to { padding: 2mm 0 1.5mm; }
+  .party { font-size: 13pt; font-weight: bold; line-height: 1.2; }
   .dest { font-size: 11pt; font-weight: bold; }
-  table { width: 100%; border-collapse: collapse; font-size: 10pt; }
-  th, td { border: 0.8pt solid #555; padding: 1.6mm 2mm; text-align: left; }
-  th { background: #eee; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.3pt; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+  th, td { border: 0.7pt solid #555; padding: 1.2mm 1.5mm; text-align: left; }
+  th { background: #eee; font-size: 7pt; text-transform: uppercase; letter-spacing: 0.3pt; }
   td.num, th.num { text-align: right; }
   /* The bag count is what gets counted off the lorry, so it reads largest. */
   td.bags { text-align: center; font-weight: bold; font-size: 12pt; }
-  /* Fixed widths for the figures, so the item name - which can be a long
-     Hindi word - gets whatever is left instead of a dead gap. */
-  th:nth-child(1), td:nth-child(1) { width: 14mm; }
-  th:nth-child(3), td:nth-child(3) { width: 32mm; }
-  th:nth-child(4), td:nth-child(4) { width: 20mm; }
-  th:nth-child(5), td:nth-child(5) { width: 26mm; }
-  tr.total td { font-weight: bold; background: #f2f2f2; font-size: 11pt; }
-  .transport { display: flex; flex-wrap: wrap; column-gap: 6mm; padding-top: 2mm; }
-  .transport .f { min-width: 45mm; }
-  .note { font-size: 9.5pt; padding-top: 1.5mm; }
-  .sign { display: flex; gap: 6mm; margin-top: 9mm; }
-  .sign .line { flex: 1; border-top: 0.8pt solid #555; padding-top: 1.2mm;
-                font-size: 8.5pt; color: #333; }
-  .tiny { font-size: 7.5pt; color: #777; }
+  th:nth-child(1), td:nth-child(1) { width: 12mm; }
+  th:nth-child(3), td:nth-child(3) { width: 16mm; text-align: right; }
+  th:nth-child(4), td:nth-child(4) { width: 20mm; text-align: right; }
+  .pack { color: #555; font-size: 8pt; }
+  tr.total td { font-weight: bold; background: #f2f2f2; font-size: 10.5pt; }
+  .transport { padding-top: 1.5mm; font-size: 9pt; font-weight: bold; }
+  .note { font-size: 8.5pt; padding-top: 0.8mm; }
+  .sign { margin-top: 10mm; }
+  .sign .line { border-top: 0.7pt solid #555; padding-top: 1mm;
+                width: 45mm; font-size: 8pt; color: #333; }
+  .tag { padding-top: 1.5mm; font-size: 7pt; color: #777;
+         text-transform: uppercase; letter-spacing: 0.4pt; }
 </style>
 </head>
 <body>
 ${copyBlock(doc, "Transporter copy", "goes with the gadi")}
-<div class="cut">— — — — — — — — — —  cut here  — — — — — — — — — —</div>
-${copyBlock(doc, "Office copy", "sign and return to the shop")}
+${copyBlock(doc, "Office copy", "sign and return")}
 </body>
 </html>`;
 }

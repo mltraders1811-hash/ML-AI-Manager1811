@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  A6_PAGE,
   bagWeight,
   buildChallanHtml,
   buildChallanMessage,
@@ -91,6 +92,15 @@ describe("escapeHtml", () => {
   });
 });
 
+describe("A6_PAGE", () => {
+  it("is A6 in points, which is what expo-print measures a page in", () => {
+    // 105mm x 148mm at 72 PPI. Passed on every print call because the
+    // default is US Letter and CSS @page size does not override it.
+    expect(A6_PAGE.width).toBe(Math.round((105 / 25.4) * 72));
+    expect(A6_PAGE.height).toBe(Math.round((148 / 25.4) * 72));
+  });
+});
+
 describe("packing", () => {
   it("reads a line the way it is written by hand: bags of a size", () => {
     // "10 Bag Biji 50kg" is ten bags of fifty kilos, not fifty between them.
@@ -116,22 +126,33 @@ describe("packing", () => {
 describe("buildChallanHtml", () => {
   const html = buildChallanHtml(doc);
 
-  it("is a whole printable document on A4", () => {
+  it("is a whole printable document on A6", () => {
     expect(html.startsWith("<!doctype html>")).toBe(true);
-    expect(html).toContain("@page { size: A4 portrait");
+    expect(html).toContain("@page { size: A6 portrait");
+    // Margins are the body's, not the page's: @page margin support differs
+    // between print paths, body padding does not.
+    expect(html).toContain("@page { size: A6 portrait; margin: 0; }");
+    expect(html).toContain("padding: 5mm");
   });
 
-  it("prints two copies with a cut line, the way the pad is used", () => {
+  it("prints two copies, one per page, the way the pad is used", () => {
     expect(html).toContain("Transporter copy");
     expect(html).toContain("Office copy");
-    expect(html).toContain("cut here");
+    expect(html).toContain("page-break-before: always");
     // The transporter signs one and it comes back to the shop.
-    expect(html).toContain("sign and return to the shop");
+    expect(html).toContain("sign and return");
     expect(html.match(/Transporter's signature/g)).toHaveLength(2);
   });
 
+  it("stays a delivery note, not a tax document", () => {
+    // Nothing on it that belongs on a GST invoice.
+    expect(html).not.toContain("GSTIN");
+    expect(html).not.toContain("23ABCDE1234F1Z5");
+    expect(html).not.toContain("Consignee");
+  });
+
   it("counts the load in nag, which is what comes off the lorry", () => {
-    expect(html).toContain("नग / bags");
+    expect(html).toContain("<td>नग</td>");
   });
 
   it("reaches a Devanagari face before a Latin-only one", () => {
@@ -150,12 +171,18 @@ describe("buildChallanHtml", () => {
     expect(hindi).toContain("बीजी");
   });
 
-  it("carries what the gateman checks", () => {
+  it("carries what the gateman checks, on one line", () => {
     expect(html).toContain("CH-2026-0003");
-    expect(html).toContain("MP 17 AB 1234");
-    expect(html).toContain("Sharma Roadways");
-    expect(html).toContain("LR-5512");
-    expect(html).toContain("Ramesh");
+    expect(html).toContain("Sharma Roadways &middot; MP 17 AB 1234 &middot; LR LR-5512 &middot; Ramesh 9812345678");
+  });
+
+  it("leaves out the parts of the lorry line nobody filled in", () => {
+    const bare = buildChallanHtml({
+      ...doc,
+      challan: { ...challan, lrNo: null, driverName: null, driverPhone: null },
+    });
+    expect(bare).toContain("Sharma Roadways &middot; MP 17 AB 1234<");
+    expect(bare).not.toContain("LR ");
   });
 
   it("totals the bags and the weight, not just the money", () => {
@@ -163,9 +190,14 @@ describe("buildChallanHtml", () => {
     expect(html).toContain('<td class="num">1,050</td>');
   });
 
-  it("names the shop on its own letterhead and in the signature", () => {
+  it("puts the packing beside the item, the way it is written by hand", () => {
+    // "Biji VK 30 kg" - the bag size, next to the name.
+    expect(html).toContain('Biji VK <span class="pack">30 kg</span>');
+  });
+
+  it("names the shop, and nothing more about it", () => {
     expect(html).toContain("M.L Traders");
-    expect(html).toContain("23ABCDE1234F1Z5");
+    expect(html).not.toContain("Main market, Satna");
   });
 
   it("leaves rates off when the transport copy should not carry prices", () => {
@@ -178,7 +210,7 @@ describe("buildChallanHtml", () => {
     // The goods themselves still have to be listed and counted.
     expect(quiet).toContain("Biji VK");
     expect(quiet).toContain("1,050");
-    expect(quiet).toContain("नग / bags");
+    expect(quiet).toContain("<td>नग</td>");
   });
 
   it("escapes the party name rather than pasting it in raw", () => {
@@ -190,13 +222,12 @@ describe("buildChallanHtml", () => {
     expect(nasty).not.toContain("Sons <b>");
   });
 
-  it("drops a field that has nothing in it instead of printing an empty label", () => {
+  it("says nothing about a destination that was not given", () => {
     const bare = buildChallanHtml({
       ...doc,
-      challan: { ...challan, driverName: null, lrNo: "   " },
+      challan: { ...challan, destination: null },
     });
-    expect(bare).not.toContain(">Driver<");
-    expect(bare).not.toContain("LR / builty");
+    expect(bare).not.toContain('class="dest"');
   });
 
   it("still prints when an order somehow has no lines", () => {
