@@ -29,6 +29,7 @@ import {
   saveParty,
   setOrderStatus,
   topItems,
+  topParties,
 } from "../src/db/queries";
 import { ordersToCsv } from "../src/lib/csv";
 
@@ -157,6 +158,16 @@ describe("filters", () => {
     expect(await listOrders({ from: "2027-01-01" })).toHaveLength(0);
   });
 
+  it("puts pending and packed in one 'to deliver' bucket", async () => {
+    const pending = await listOrders({ status: "pending" });
+    const packed = await listOrders({ status: "packed" });
+    const toDeliver = await listOrders({ status: "to-deliver" });
+    expect(toDeliver).toHaveLength(pending.length + packed.length);
+    expect(toDeliver.every((o) => o.status === "pending" || o.status === "packed")).toBe(
+      true,
+    );
+  });
+
   it("counts a cancelled order out of the money owed", async () => {
     const target = (await listOrders({ status: "unpaid" }))[0];
     if (!target) return;
@@ -181,6 +192,39 @@ describe("sample orders", () => {
     // The 16 sample bills plus the two written above.
     expect(dashboard.monthOrders).toBe(18);
     expect(dashboard.monthSales).toBeGreaterThan(600_000);
+  });
+
+  it("counts every order on the book, not just this month's", async () => {
+    const dashboard = await getDashboard("2026-07-03", "2026-07-01", "2026-07-31");
+    const live = (await listOrders({ limit: 5000 })).filter(
+      (o) => o.status !== "cancelled",
+    );
+    expect(dashboard.totalOrders).toBe(live.length);
+    expect(dashboard.deliveredOrders).toBe(
+      (await listOrders({ status: "delivered", limit: 5000 })).length,
+    );
+    expect(dashboard.deliveredMonthOrders).toBeLessThanOrEqual(
+      dashboard.deliveredOrders,
+    );
+  });
+
+  it("weighs what is still waiting on a gadi", async () => {
+    const dashboard = await getDashboard("2026-07-03", "2026-07-01", "2026-07-31");
+    const waiting = await listOrdersWithLines({ status: "to-deliver", limit: 5000 });
+    const kg = waiting.reduce(
+      (sum, o) => sum + o.lines.reduce((n, l) => n + l.qty, 0),
+      0,
+    );
+    expect(dashboard.pendingOrders).toBe(waiting.length);
+    expect(dashboard.toDeliverKg).toBeCloseTo(kg, 2);
+  });
+
+  it("ranks parties by the weight they took, not the bill", async () => {
+    const parties = await topParties("2026-07-01", "2026-07-31", 5);
+    expect(parties.length).toBeGreaterThan(0);
+    expect(parties[0]?.kg).toBeGreaterThan(0);
+    const weights = parties.map((p) => p.kg);
+    expect([...weights].sort((a, b) => b - a)).toEqual(weights);
   });
 
   it("ranks the items that actually moved", async () => {

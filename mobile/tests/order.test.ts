@@ -4,7 +4,9 @@ import {
   bagsToKg,
   brokerage,
   computeTotals,
+  goodsSummary,
   lineAmount,
+  lineGoods,
   nextOrderNo,
   nextStatus,
   orderBags,
@@ -209,5 +211,42 @@ describe("order weights", () => {
 
   it("counts a line with no bag figure as none", () => {
     expect(orderBags([line({ bags: null })])).toBe(0);
+  });
+});
+
+describe("what is going out", () => {
+  const line = (over: Partial<OrderLine>): OrderLine => ({
+    id: "l",
+    orderId: "o",
+    itemId: null,
+    itemName: "Biji",
+    bags: 10,
+    qty: 300,
+    rate: 121,
+    amount: 36_300,
+    position: 0,
+    ...over,
+  });
+
+  it("names a line in bags when it was written in bags", () => {
+    expect(lineGoods(line({}))).toBe("Biji 10 bag");
+  });
+
+  it("falls back to loose kilos when there are no bags", () => {
+    expect(lineGoods(line({ bags: null, qty: 47.5 }))).toBe("Biji 48 kg");
+  });
+
+  it("joins the first lines and counts the rest", () => {
+    const lines = [
+      line({}),
+      line({ id: "l2", itemName: "Dhaniya", bags: 4 }),
+      line({ id: "l3", itemName: "Saunf", bags: 2 }),
+    ];
+    expect(goodsSummary(lines)).toBe("Biji 10 bag · Dhaniya 4 bag +1 more");
+    expect(goodsSummary(lines, 3)).toBe("Biji 10 bag · Dhaniya 4 bag · Saunf 2 bag");
+  });
+
+  it("says so when an order has nothing on it", () => {
+    expect(goodsSummary([])).toBe("No items");
   });
 });

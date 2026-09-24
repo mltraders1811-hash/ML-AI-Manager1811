@@ -5,19 +5,22 @@ import { FlatList, StyleSheet, Text, View } from "react-native";
 import { OrderCard } from "../../components/OrderCard";
 import { Button, Chip, EmptyState, Loading, SearchBar } from "../../components/ui";
 import { listOrders } from "../../db/queries";
+import { todayISO } from "../../lib/date";
 import { formatINR } from "../../lib/money";
 import { useQuery } from "../../hooks/useQuery";
 import type { OrderStatus } from "../../lib/types";
 import { colors, font, spacing, typeface } from "../../theme";
 
-type Filter = OrderStatus | "all" | "unpaid";
+type Filter = OrderStatus | "all" | "unpaid" | "to-deliver" | "today";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
+  { key: "today", label: "Today" },
+  { key: "to-deliver", label: "To deliver" },
+  { key: "delivered", label: "Delivered" },
   { key: "unpaid", label: "Unpaid" },
   { key: "pending", label: "Pending" },
   { key: "packed", label: "Packed" },
-  { key: "delivered", label: "Delivered" },
   { key: "cancelled", label: "Cancelled" },
 ];
 
@@ -25,20 +28,28 @@ export default function OrdersScreen() {
   const router = useRouter();
   // The dashboard links here with a filter already chosen ("to collect" ->
   // unpaid), so the tab has to honour the parameter it is opened with.
-  const params = useLocalSearchParams<{ status?: string }>();
+  const params = useLocalSearchParams<{ status?: string; date?: string }>();
+  const today = todayISO();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
   useEffect(() => {
-    const incoming = params.status;
+    const incoming = params.date === "today" ? "today" : params.status;
     if (incoming && FILTERS.some((f) => f.key === incoming)) {
       setFilter(incoming as Filter);
     }
-  }, [params.status]);
+  }, [params.status, params.date]);
 
   const { data: orders, loading } = useQuery(
-    () => listOrders({ search, status: filter }),
-    [search, filter],
+    () =>
+      // "Today" is a date window, not a status, so it cannot ride along in the
+      // status column the other chips use.
+      listOrders(
+        filter === "today"
+          ? { search, from: today, to: today }
+          : { search, status: filter },
+      ),
+    [search, filter, today],
   );
 
   const total = (orders ?? []).reduce((sum, o) => sum + o.total, 0);

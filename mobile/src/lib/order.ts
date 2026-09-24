@@ -1,4 +1,4 @@
-import { round2, parseAmount } from "./money";
+import { formatNumber, round2, parseAmount } from "./money";
 import type {
   DraftLine,
   Order,
@@ -173,4 +173,21 @@ export function orderKg(lines: OrderLine[]): number {
 
 export function orderBags(lines: OrderLine[]): number {
   return round2(lines.reduce((sum, l) => sum + (l.bags ?? 0), 0));
+}
+
+/** What one line is sending, in the words used on the shop floor: bags if the
+ *  line was written in bags, loose kilos otherwise. */
+export function lineGoods(line: OrderLine): string {
+  if (line.bags != null && line.bags > 0) {
+    return `${line.itemName} ${formatNumber(line.bags, 0)} bag`;
+  }
+  return `${line.itemName} ${formatNumber(line.qty, 0)} kg`;
+}
+
+/** The goods on an order, short enough for a list row. */
+export function goodsSummary(lines: OrderLine[], max = 2): string {
+  if (lines.length === 0) return "No items";
+  const shown = lines.slice(0, max).map(lineGoods).join(" · ");
+  const rest = lines.length - max;
+  return rest > 0 ? `${shown} +${rest} more` : shown;
 }

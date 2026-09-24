@@ -338,7 +338,7 @@ export async function deleteBroker(id: string): Promise<void> {
 
 export interface OrderFilter {
   search?: string;
-  status?: OrderStatus | "all" | "unpaid";
+  status?: OrderStatus | "all" | "unpaid" | "to-deliver";
   partyId?: string;
   from?: string;
   to?: string;
@@ -363,6 +363,9 @@ export async function listOrders(filter: OrderFilter = {}): Promise<Order[]> {
       // "Money still out" is the question actually being asked, and a
       // cancelled bill is not money anyone owes.
       where.push("balance > 0 AND status != 'cancelled'");
+    } else if (filter.status === "to-deliver") {
+      // One bucket for everything still waiting on a gadi.
+      where.push("status IN ('pending','packed')");
     } else {
       where.push("status = ?");
       args.push(filter.status);
@@ -595,6 +598,13 @@ export interface Dashboard {
   outstanding: number;
   unpaidOrders: number;
   monthKg: number;
+  /** Every bill ever written that was not cancelled. */
+  totalOrders: number;
+  totalSales: number;
+  /** Still to go out - the weight is what decides how many gadis are needed. */
+  toDeliverKg: number;
+  deliveredOrders: number;
+  deliveredMonthOrders: number;
 }
 
 export async function getDashboard(
@@ -627,6 +637,20 @@ export async function getDashboard(
      WHERE o.date BETWEEN ? AND ? AND o.${live}`,
     [monthFrom, monthTo],
   );
+  const allRow = await db.getFirstAsync<{ total: number; n: number }>(
+    `SELECT IFNULL(SUM(total),0) AS total, COUNT(*) AS n FROM orders WHERE ${live}`,
+  );
+  const toDeliverKgRow = await db.getFirstAsync<{ kg: number }>(
+    `SELECT IFNULL(SUM(l.qty),0) AS kg FROM order_lines l
+     JOIN orders o ON o.id = l.order_id
+     WHERE o.status IN ('pending','packed')`,
+  );
+  const deliveredRow = await db.getFirstAsync<{ n: number; month: number }>(
+    `SELECT COUNT(*) AS n,
+            SUM(CASE WHEN date BETWEEN ? AND ? THEN 1 ELSE 0 END) AS month
+     FROM orders WHERE status = 'delivered'`,
+    [monthFrom, monthTo],
+  );
 
   return {
     todaySales: round2(todayRow?.total ?? 0),
@@ -637,6 +661,11 @@ export async function getDashboard(
     outstanding: round2(dueRow?.total ?? 0),
     unpaidOrders: dueRow?.n ?? 0,
     monthKg: round2(kgRow?.kg ?? 0),
+    totalOrders: allRow?.n ?? 0,
+    totalSales: round2(allRow?.total ?? 0),
+    toDeliverKg: round2(toDeliverKgRow?.kg ?? 0),
+    deliveredOrders: deliveredRow?.n ?? 0,
+    deliveredMonthOrders: deliveredRow?.month ?? 0,
   };
 }
 
@@ -650,15 +679,29 @@ export async function topParties(
   from: string,
   to: string,
   limit = 5,
-): Promise<TopRow[]> {
+): Promise<(TopRow & { kg: number })[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<{ name: string; total: number; n: number }>(
-    `SELECT party_name AS name, SUM(total) AS total, COUNT(*) AS n FROM orders
-     WHERE date BETWEEN ? AND ? AND status != 'cancelled'
-     GROUP BY party_id ORDER BY total DESC LIMIT ?`,
+  const rows = await db.getAllAsync<{
+    name: string;
+    total: number;
+    kg: number;
+    n: number;
+  }>(
+    `SELECT o.party_name AS name, SUM(o.total) AS total, COUNT(*) AS n,
+            IFNULL(SUM(k.kg), 0) AS kg
+     FROM orders o
+     LEFT JOIN (SELECT order_id, SUM(qty) AS kg FROM order_lines GROUP BY order_id) k
+            ON k.order_id = o.id
+     WHERE o.date BETWEEN ? AND ? AND o.status != 'cancelled'
+     GROUP BY o.party_id ORDER BY kg DESC LIMIT ?`,
     [from, to, limit],
   );
-  return rows.map((r) => ({ name: r.name, total: round2(r.total), count: r.n }));
+  return rows.map((r) => ({
+    name: r.name,
+    total: round2(r.total),
+    kg: round2(r.kg),
+    count: r.n,
+  }));
 }
 
 export async function topItems(
