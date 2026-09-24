@@ -4,9 +4,10 @@ import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import { OrderCard } from "../../components/OrderCard";
 import { Button, Chip, EmptyState, Loading, SearchBar } from "../../components/ui";
-import { listOrders } from "../../db/queries";
+import { listOrdersWithLines } from "../../db/queries";
 import { todayISO } from "../../lib/date";
-import { formatINR } from "../../lib/money";
+import { formatINR, formatNumber } from "../../lib/money";
+import { orderKg } from "../../lib/order";
 import { useQuery } from "../../hooks/useQuery";
 import type { OrderStatus } from "../../lib/types";
 import { colors, font, spacing, typeface } from "../../theme";
@@ -26,8 +27,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 export default function OrdersScreen() {
   const router = useRouter();
-  // The dashboard links here with a filter already chosen ("to collect" ->
-  // unpaid), so the tab has to honour the parameter it is opened with.
+  // The home screen links here with a filter already chosen ("to be
+  // delivered", "today"), so the tab has to honour the parameter it is opened with.
   const params = useLocalSearchParams<{ status?: string; date?: string }>();
   const today = todayISO();
   const [search, setSearch] = useState("");
@@ -44,7 +45,7 @@ export default function OrdersScreen() {
     () =>
       // "Today" is a date window, not a status, so it cannot ride along in the
       // status column the other chips use.
-      listOrders(
+      listOrdersWithLines(
         filter === "today"
           ? { search, from: today, to: today }
           : { search, status: filter },
@@ -52,7 +53,10 @@ export default function OrdersScreen() {
     [search, filter, today],
   );
 
-  const total = (orders ?? []).reduce((sum, o) => sum + o.total, 0);
+  const kg = (orders ?? []).reduce(
+    (sum, o) => sum + (o.status === "cancelled" ? 0 : orderKg(o.lines)),
+    0,
+  );
   const due = (orders ?? []).reduce(
     (sum, o) => sum + (o.status === "cancelled" ? 0 : o.balance),
     0,
@@ -92,6 +96,10 @@ export default function OrdersScreen() {
           renderItem={({ item }) => (
             <OrderCard
               order={item}
+              lines={item.lines}
+              // The Unpaid chip is the one list that exists to chase money, so
+              // it is the one list that still shows it.
+              showMoney={filter === "unpaid"}
               onPress={() => router.push(`/order/${item.id}`)}
             />
           )}
@@ -100,9 +108,9 @@ export default function OrdersScreen() {
               <View style={s.summary}>
                 <Text style={s.summaryText}>
                   {orders.length} order{orders.length === 1 ? "" : "s"} ·{" "}
-                  {formatINR(total, { decimals: false })}
+                  {formatNumber(kg, 0)} kg
                 </Text>
-                {due > 0 ? (
+                {filter === "unpaid" && due > 0 ? (
                   <Text style={s.summaryDue}>
                     {formatINR(due, { decimals: false })} to collect
                   </Text>
